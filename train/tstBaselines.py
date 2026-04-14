@@ -101,12 +101,8 @@ Usage:
 # Use all SOTA features (Fourier encoding + residual trend + recursive lags)
     python tstBaselines.py --crop maize --country NL --model_type tst --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily
 
-# iTransformer for cross-variable dependencies: python tstBaselines.py --crop maize --country NL --model_type itransformer --epochs 50 --aggregation dekad
-
-# TimeXer with exogenous variable handling: python tstBaselines.py --crop wheat --country BE --model_type timexer --epochs 50 --aggregation daily
-
 # Quick test run (5 epochs)
-    python tstBaselines.py --crop wheat --country BE --model_type tsmixer --epochs 5 --aggregation daily --test_years 5 --results_dir checkpoints-test/results
+    python tstBaselines.py --crop wheat --country NL --model_type timesnet --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later
 
 
 ------------
@@ -183,7 +179,7 @@ if __name__ == "__main__":
     parser.add_argument('--crop', default="maize")
     parser.add_argument('--country', default="NL")
     parser.add_argument('--model_type', default="autoformer",
-                        choices=['autoformer', 'patchtst', 'tsmixer', 'informer', 'tst', 'itransformer', 'timexer'])
+                        choices=['autoformer', 'patchtst', 'tsmixer', 'informer', 'tst', 'itransformer', 'timexer', 'timesnet'])
     parser.add_argument('--aggregation', default="dekad",
                         choices=['daily', 'weekly', 'dekad'])
     parser.add_argument('--use_sota_features', action='store_true')

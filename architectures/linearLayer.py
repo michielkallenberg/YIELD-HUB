@@ -102,6 +102,32 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                 observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         raise NotImplementedError
 
+    @staticmethod
+    def _get_standardized_context_length(seq_len: int, lags_sequence: List[int]) -> int:
+        """
+        Calculate standardized context length for all models.
+
+        This ensures fair comparison across architectures (both linear and transformer)
+        by using the same context length calculation: seq_len - max(lags_sequence)
+
+        Args:
+            seq_len: Total sequence length
+            lags_sequence: List of lag values
+
+        Returns:
+            Effective sequence length that accounts for lag requirements
+        """
+        return seq_len - max(lags_sequence)
+
+    @abstractmethod
+    def _build_model(self) -> nn.Module:
+        raise NotImplementedError
+
+    @abstractmethod
+    def forward(self, x_ts: torch.Tensor, x_static: torch.Tensor,
+                observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        raise NotImplementedError
+
     def _get_static_feature_names(self) -> List[str]:
         return _get_static_feature_names(
             self.config.include_spatial_features,
@@ -212,11 +238,13 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             logging.info(f"[{self.config.model_type}] Skipping mask verification (model not ready).")
             return
 
-        dummy_ts = torch.randn(2, self.config.seq_len, self.n_ts_features, device=self.device)
+        # Use effective_seq_len if available (for linear models)
+        seq_len = self._effective_seq_len if hasattr(self, '_effective_seq_len') else self.config.seq_len
+        dummy_ts = torch.randn(2, seq_len, self.n_ts_features, device=self.device)
         dummy_static = torch.zeros(2, self.n_static_features, device=self.device)
-        full_mask = torch.ones(2, self.config.seq_len, dtype=torch.bool, device=self.device)
+        full_mask = torch.ones(2, seq_len, dtype=torch.bool, device=self.device)
         half_mask = full_mask.clone()
-        half_mask[:, self.config.seq_len // 2:] = False
+        half_mask[:, seq_len // 2:] = False
 
         with torch.no_grad():
             out_full = self.forward(dummy_ts, dummy_static, observed_mask=full_mask)
@@ -725,16 +753,21 @@ class NLinearYieldModel(BaseTimeSeriesModel):
     """
 
     def _build_model(self) -> nn.Module:
-        seq_len = self.config.seq_len
+        # Standardize sequence length calculation for fair comparison with transformers
+        lags_sequence = [1] if self.config.lag_years > 0 else [0]
+        effective_seq_len = self._get_standardized_context_length(
+            self.config.seq_len, lags_sequence
+        )
 
         logging.info(
-            f"[NLinear BUILD] seq_len={seq_len}, "
+            f"[NLinear BUILD] seq_len={self.config.seq_len}, "
+            f"effective_seq_len={effective_seq_len}, "
             f"n_ts_features={self.n_ts_features}, "
             f"n_static_features={self.n_static_features}"
         )
 
-        # One linear layer maps (seq_len,) → (1,) per channel
-        self.temporal_linear = nn.Linear(seq_len, 1)
+        # One linear layer maps (effective_seq_len,) → (1,) per channel
+        self.temporal_linear = nn.Linear(effective_seq_len, 1)
 
         # After pooling across channels: n_ts_features scalars + static features → yield
         combined_dim = self.n_ts_features + self.n_static_features
@@ -747,9 +780,12 @@ class NLinearYieldModel(BaseTimeSeriesModel):
         )
 
         logging.info(
-            f"[NLinear BUILD] temporal_linear: ({seq_len} → 1), "
+            f"[NLinear BUILD] temporal_linear: ({effective_seq_len} → 1), "
             f"regression_head input: {combined_dim}"
         )
+
+        # Store effective sequence length for forward pass
+        self._effective_seq_len = effective_seq_len
 
         self._model_ready = True
         return nn.Identity()
@@ -764,6 +800,13 @@ class NLinearYieldModel(BaseTimeSeriesModel):
         Forward pass through NLinear model.
         """
         B, T, C = x_ts.shape
+
+        # Truncate to effective sequence length for fair comparison with transformers
+        if T > self._effective_seq_len:
+            x_ts = x_ts[:, :self._effective_seq_len, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._effective_seq_len]
+            T = self._effective_seq_len
 
         # Find last valid (non-padded) value per sample per channel
         if observed_mask is not None:
@@ -811,19 +854,27 @@ class DLinearYieldModel(BaseTimeSeriesModel):
     }
 
     def _build_model(self) -> nn.Module:
-        seq_len = self.config.seq_len
+        # Standardize sequence length calculation for fair comparison with transformers
+        lags_sequence = [1] if self.config.lag_years > 0 else [0]
+        effective_seq_len = self._get_standardized_context_length(
+            self.config.seq_len, lags_sequence
+        )
+
         kernel_size = self.KERNEL_SIZES.get(self.config.aggregation, 25)
 
         if kernel_size % 2 == 0:
             kernel_size += 1
 
         logging.info(
-            f"[DLinear BUILD] seq_len={seq_len}, kernel_size={kernel_size}, "
+            f"[DLinear BUILD] seq_len={self.config.seq_len}, "
+            f"effective_seq_len={effective_seq_len}, "
+            f"kernel_size={kernel_size}, "
             f"n_ts_features={self.n_ts_features}, "
             f"n_static_features={self.n_static_features}"
         )
 
         self._kernel_size = kernel_size
+        self._effective_seq_len = effective_seq_len
 
         self.moving_avg = nn.AvgPool1d(
             kernel_size=kernel_size,
@@ -831,8 +882,8 @@ class DLinearYieldModel(BaseTimeSeriesModel):
             padding=0,
         )
 
-        self.trend_linear = nn.Linear(seq_len, 1)
-        self.remainder_linear = nn.Linear(seq_len, 1)
+        self.trend_linear = nn.Linear(effective_seq_len, 1)
+        self.remainder_linear = nn.Linear(effective_seq_len, 1)
 
         combined_dim = self.n_ts_features + self.n_static_features
         self.regression_head = nn.Sequential(
@@ -844,7 +895,7 @@ class DLinearYieldModel(BaseTimeSeriesModel):
         )
 
         logging.info(
-            f"[DLinear BUILD] trend_linear+remainder_linear: ({seq_len} → 1), "
+            f"[DLinear BUILD] trend_linear+remainder_linear: ({effective_seq_len} → 1), "
             f"regression_head input: {combined_dim}"
         )
 
@@ -900,6 +951,15 @@ class DLinearYieldModel(BaseTimeSeriesModel):
         """
         Forward pass through DLinear model.
         """
+        B, T, C = x_ts.shape
+
+        # Truncate to effective sequence length for fair comparison with transformers
+        if T > self._effective_seq_len:
+            x_ts = x_ts[:, :self._effective_seq_len, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._effective_seq_len]
+            T = self._effective_seq_len
+
         x_t = x_ts.transpose(1, 2)
 
         trend = self._extract_trend(x_t, observed_mask=observed_mask)
@@ -924,8 +984,7 @@ class RevIN(nn.Module):
         mean = sum(x * mask) / sum(mask)
         std = sqrt(sum((x - mean)^2 * mask) / sum(mask) + eps)
 
-    Note: Uses population std (dividing by N, not N-1) for consistency
-    with the Reversible Instance Normalization paper.
+    Uses population std (dividing by N, not N-1) for consistency with the Reversible Instance Normalization paper.
 
     The affine transform (gamma, beta) is learned during training.
     """
@@ -981,10 +1040,15 @@ class RLinearYieldModel(BaseTimeSeriesModel):
     """
 
     def _build_model(self) -> nn.Module:
-        seq_len = self.config.seq_len
+        # Standardize sequence length calculation for fair comparison with transformers
+        lags_sequence = [1] if self.config.lag_years > 0 else [0]
+        effective_seq_len = self._get_standardized_context_length(
+            self.config.seq_len, lags_sequence
+        )
 
         logging.info(
-            f"[RLinear BUILD] seq_len={seq_len}, "
+            f"[RLinear BUILD] seq_len={self.config.seq_len}, "
+            f"effective_seq_len={effective_seq_len}, "
             f"n_ts_features={self.n_ts_features}, "
             f"n_static_features={self.n_static_features}"
         )
@@ -995,7 +1059,7 @@ class RLinearYieldModel(BaseTimeSeriesModel):
             affine=True,
         )
 
-        self.temporal_linear = nn.Linear(seq_len, 1)
+        self.temporal_linear = nn.Linear(effective_seq_len, 1)
 
         combined_dim = self.n_ts_features + self.n_static_features
         self.regression_head = nn.Sequential(
@@ -1008,9 +1072,11 @@ class RLinearYieldModel(BaseTimeSeriesModel):
 
         logging.info(
             f"[RLinear BUILD] revin channels={self.n_ts_features} (affine=True), "
-            f"temporal_linear: ({seq_len} → 1), "
+            f"temporal_linear: ({effective_seq_len} → 1), "
             f"regression_head input: {combined_dim}"
         )
+
+        self._effective_seq_len = effective_seq_len
 
         self._model_ready = True
         return nn.Identity()
@@ -1025,6 +1091,13 @@ class RLinearYieldModel(BaseTimeSeriesModel):
         Forward pass through RLinear model.
         """
         B, T, C = x_ts.shape
+
+        # Truncate to effective sequence length for fair comparison with transformers
+        if T > self._effective_seq_len:
+            x_ts = x_ts[:, :self._effective_seq_len, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._effective_seq_len]
+            T = self._effective_seq_len
 
         # RevIN normalize
         x_revin, instance_mean, instance_std = self.revin(x_ts, observed_mask)
@@ -1087,7 +1160,12 @@ class XLinearYieldModel(BaseTimeSeriesModel):
     DROPOUT = 0.1
 
     def _build_model(self) -> nn.Module:
-        seq_len = self.config.seq_len
+        # Standardize sequence length calculation for fair comparison with transformers
+        lags_sequence = [1] if self.config.lag_years > 0 else [0]
+        effective_seq_len = self._get_standardized_context_length(
+            self.config.seq_len, lags_sequence
+        )
+
         n_exo = self.n_ts_features
         hidden = self.HIDDEN_SIZE
         t_ff = self.TEMPORAL_FF
@@ -1095,10 +1173,15 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         drop = self.DROPOUT
 
         logging.info(
-            f"[XLinear BUILD] seq_len={seq_len}, n_exo_channels={n_exo}, "
+            f"[XLinear BUILD] seq_len={self.config.seq_len}, "
+            f"effective_seq_len={effective_seq_len}, "
+            f"n_exo_channels={n_exo}, "
             f"n_static={self.n_static_features}, hidden={hidden}, "
             f"temporal_ff={t_ff}, channel_ff={c_ff}"
         )
+
+        # Store effective sequence length for forward pass
+        self._effective_seq_len = effective_seq_len
 
         # RevIN for endogenous series normalization (optional)
         if self.config.use_revIN:
@@ -1215,6 +1298,13 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         """
         B, T, C = x_ts.shape
 
+        # Truncate to effective sequence length for fair comparison with transformers
+        if T > self._effective_seq_len:
+            x_ts = x_ts[:, :self._effective_seq_len, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._effective_seq_len]
+            T = self._effective_seq_len
+
         # Construct endogenous series
         x_endo = self._build_endogenous_series(x_static, x_ts, observed_mask)
 
@@ -1280,6 +1370,307 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         return predictions
 
 
+class OLinearYieldModel(BaseTimeSeriesModel):
+    """
+    OLinear-C adapted for crop yield regression.
+
+    From "OLinear: A Linear Orthogonal Transformation for Time Series Forecasting"
+    (Yue et al., 2025)
+
+    OLinear-C variant uses fixed channel correlation matrix computed from
+    temporal correlations in the training data, making it well-suited for
+    agricultural datasets with limited samples.
+
+    Key adaptations for regression:
+    - Removed predict_linear layer (for sequence forecasting)
+    - Added pooling over temporal dimension after OLinear blocks
+    - Concatenated pooled features with static features
+    - Added regression head for single-value yield prediction
+    """
+
+    HIDDEN_SIZE = 64
+    FF_SIZE = 256
+    DROPOUT = 0.1
+    E_LAYERS = 2
+    EMBED_SIZE = 4
+
+    def _build_model(self) -> nn.Module:
+        # Standardize sequence length calculation for fair comparison with transformers
+        lags_sequence = [1] if self.config.lag_years > 0 else [0]
+        effective_seq_len = self._get_standardized_context_length(
+            self.config.seq_len, lags_sequence
+        )
+
+        n_channels = self.n_ts_features
+        hidden = self.HIDDEN_SIZE
+        d_ff = self.FF_SIZE
+        dropout = self.DROPOUT
+
+        logging.info(
+            f"[OLinear BUILD] seq_len={self.config.seq_len}, "
+            f"effective_seq_len={effective_seq_len}, "
+            f"n_channels={n_channels}, "
+            f"n_static={self.n_static_features}, hidden={hidden}, "
+            f"ff_size={d_ff}"
+        )
+
+        # Store effective sequence length for forward pass
+        self._effective_seq_len = effective_seq_len
+
+        # RevIN for input/output normalization
+        self.revin = RevIN(
+            num_features=n_channels,
+            eps=1e-8,
+            affine=True,
+        )
+
+        # Embedding dimension for token expansion
+        self.embed_size = self.EMBED_SIZE
+        self.embeddings = nn.Parameter(torch.randn(1, self.embed_size))
+
+        # Channel correlation matrix (will be initialized during first forward pass)
+        self.channel_corr_mat = None
+        self._corr_mat_initialized = False
+
+        # Build OLinear encoder layers
+        encoder_layers = []
+        for _ in range(self.E_LAYERS):
+            encoder_layers.append(
+                OLinearEncoderLayer(
+                    d_model=hidden,
+                    d_ff=d_ff,
+                    n_channels=n_channels,
+                    dropout=dropout,
+                    activation='gelu',
+                )
+            )
+
+        # OLinear-style orthogonal transformation adapted for regression
+        # Keep the core innovation: process channels as tokens with proper normalization
+        self.ortho_trans = nn.Sequential(
+            nn.Linear(effective_seq_len * self.embed_size, hidden),
+            nn.LayerNorm(hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, hidden),
+            nn.LayerNorm(hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, self.embed_size),
+        )
+
+        # Learnable delta parameters for orthogonal transformation (from OLinear-C)
+        self.delta1 = nn.Parameter(torch.zeros(1, n_channels, 1, effective_seq_len))
+        self.delta2 = nn.Parameter(torch.zeros(1, n_channels, 1, 1))
+
+        # Final projection and regression head
+        combined_dim = n_channels + self.n_static_features
+        self.regression_head = nn.Sequential(
+            nn.Linear(combined_dim, combined_dim // 2),
+            nn.LayerNorm(combined_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(combined_dim // 2, 1),
+        )
+
+        logging.info(
+            f"[OLinear BUILD] regression_head input: {combined_dim}, "
+            f"output: 1"
+        )
+
+        self._model_ready = True
+        return nn.Identity()
+
+    def _compute_channel_correlation(self, x_ts: torch.Tensor):
+        """
+        Compute temporal correlation matrix across channels.
+
+        Args:
+            x_ts: Time series data [B, T, C]
+
+        Returns:
+            Correlation matrix [C, C]
+        """
+        B, T, C = x_ts.shape
+
+        # Compute correlation matrix across time dimension for each channel pair
+        # Normalize each channel
+        x_norm = x_ts - x_ts.mean(dim=1, keepdim=True)
+        x_norm = x_norm / (x_norm.std(dim=1, keepdim=True) + 1e-8)
+
+        # Compute correlation matrix
+        # x_norm: [B, T, C] -> [B, C, T]
+        x_t = x_norm.transpose(1, 2)
+        # Correlation: [B, C, C]
+        corr = torch.bmm(x_t, x_t.transpose(1, 2)) / T
+
+        # Average across batch
+        corr_mean = corr.mean(dim=0)
+
+        return corr_mean
+
+    def tokenEmb(self, x: torch.Tensor, embeddings: torch.Tensor) -> torch.Tensor:
+        """
+        Expand dimension with learnable embeddings.
+
+        Args:
+            x: Input [B, T, C]
+            embeddings: Learnable embeddings [1, D]
+
+        Returns:
+            Expanded tensor [B, N, T, D]
+        """
+        if self.embed_size <= 1:
+            return x.transpose(-1, -2).unsqueeze(-1)
+
+        # x: [B, T, N] -> [B, N, T]
+        x = x.transpose(-1, -2)
+        x = x.unsqueeze(-1)
+        # B*N*T*1 x 1*D = B*N*T*D
+        return x * embeddings
+
+    def forward(
+        self,
+        x_ts: torch.Tensor,
+        x_static: torch.Tensor,
+        observed_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Forward pass through OLinear model.
+        """
+        B, T, C = x_ts.shape
+
+        # Truncate to effective sequence length for fair comparison with transformers
+        if T > self._effective_seq_len:
+            x_ts = x_ts[:, :self._effective_seq_len, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._effective_seq_len]
+            T = self._effective_seq_len
+
+        # Initialize channel correlation matrix if not already done
+        if not self._corr_mat_initialized and self.training:
+            with torch.no_grad():
+                self.channel_corr_mat = self._compute_channel_correlation(x_ts)
+                self._corr_mat_initialized = True
+                logging.info("[OLinear] Channel correlation matrix initialized")
+
+        # RevIN normalize
+        x_norm, instance_mean, instance_std = self.revin(x_ts, observed_mask)
+
+        # Token embedding with dimension expansion
+        # [B, T, C] -> [B, C, T, D]
+        x_emb = self.tokenEmb(x_norm, self.embeddings)
+        B, N, D, T = x_emb.shape
+
+        # Follow original OLinear-C architecture more closely
+        # Original: [B, N, T, D] -> [B, N, D, T] -> flatten(-2) -> [B, N, D*T]
+        #         -> ortho_trans -> [B, N, D*pred_len] -> reshape -> [B, N, D, pred_len]
+
+        # Transpose to match original structure
+        x_trans = x_emb.transpose(-1, -2)  # [B, N, T, D] -> [B, N, D, T]
+
+        # Flatten last two dimensions: [B, N, D, T] -> [B, N, D*T]
+        x_flat = x_trans.flatten(-2)
+
+        # Reshape to apply ortho_trans to all channels: [B, N, D*T] -> [B*N, D*T]
+        x_flat_reshaped = x_flat.reshape(B * N, -1)
+
+        # Apply ortho_trans (MLP with proper normalization - key OLinear-C innovation)
+        encoded = self.ortho_trans(x_flat_reshaped)  # [B*N, D*T] -> [B*N, embed_size]
+
+        # Reshape back to [B, N, embed_size]
+        encoded = encoded.reshape(B, N, -1)
+
+        # Apply channel correlation matrix (OLinear-C innovation)
+        # Use the computed correlation to guide channel-wise attention
+        if self.channel_corr_mat is not None:
+            # Normalize correlation matrix with softmax (key OLinear-C component)
+            corr_weight = F.softmax(self.channel_corr_mat, dim=-1)  # [N, N]
+            # Apply channel attention: weighted combination of channels
+            # Expand corr_weight to match batch dimension
+            corr_weight = corr_weight.unsqueeze(0).expand(B, -1, -1)  # [B, N, N]
+            # Apply attention: [B, N, N] @ [B, N, embed_size] -> [B, N, embed_size]
+            encoded = torch.bmm(corr_weight, encoded)  # [B, N, embed_size]
+
+        # Pool over embed_size dimension to get channel representation
+        pooled = encoded.mean(dim=-1)  # [B, N] - pool over embed_size, not channels
+
+        # Concatenate with static features and predict yield
+        combined = torch.cat([pooled, x_static], dim=-1)
+        predictions = self.regression_head(combined).squeeze(-1)
+
+        return predictions
+
+
+class OLinearEncoderLayer(nn.Module):
+    """
+    Simplified OLinear encoder layer with fixed correlation matrix.
+
+    Based on LinearEncoder_abla_design from OLinear with:
+    - CovMatTrans='softmax': Use softmax on correlation matrix
+    - WeightTrans='none': No learnable weight matrix
+    - NormSet='none': No additional normalization
+    - onlyconv=True: Use convolutional layers only
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int,
+        n_channels: int,
+        dropout: float = 0.1,
+        activation: str = 'gelu',
+    ):
+        super().__init__()
+
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.n_channels = n_channels
+
+        self.dropout = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        # Value projection
+        self.v_proj = nn.Linear(d_model, d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
+
+        # Convolutional layers
+        self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1)
+        self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1)
+
+        self.activation = F.gelu if activation == 'gelu' else F.relu
+
+    def forward(self, x: torch.Tensor, **kwargs) -> Tuple[torch.Tensor, None]:
+        """
+        Forward pass through encoder layer.
+
+        Args:
+            x: Input tensor [B, N, d_model] where N is number of channels
+
+        Returns:
+            Tuple of (output, None)
+        """
+        # Value projection
+        values = self.v_proj(x)
+
+        # Apply identity transformation (correlation matrix handled at model level)
+        new_x = values
+
+        # Residual connection with dropout
+        x = x + self.dropout(self.out_proj(new_x))
+        x = self.norm1(x)
+
+        # Feedforward convolutional layers
+        y = self.dropout(self.activation(self.conv1(x.transpose(-1, 1))))
+        y = self.dropout(self.conv2(y).transpose(-1, 1))
+
+        # Second residual connection
+        output = self.norm2(x + y)
+
+        return output, None
+
+
 # =========================================================
 # MODEL FACTORY
 # =========================================================
@@ -1290,6 +1681,7 @@ def create_model(config: LinearModelConfig) -> BaseTimeSeriesModel:
         "dlinear": DLinearYieldModel,
         "xlinear": XLinearYieldModel,
         "rlinear": RLinearYieldModel,
+        "olinear": OLinearYieldModel,
     }
 
     if config.model_type.lower() not in model_map:

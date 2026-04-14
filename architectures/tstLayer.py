@@ -166,6 +166,23 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         self.val_metrics = ModelMetrics(prefix="val")
         self.test_metrics = ModelMetrics(prefix="test")
 
+    @staticmethod
+    def _get_standardized_context_length(seq_len: int, lags_sequence: List[int]) -> int:
+        """
+        Calculate standardized context length for all models.
+
+        This ensures fair comparison across architectures by using the same
+        context length calculation: seq_len - max(lags_sequence)
+
+        Args:
+            seq_len: Total sequence length
+            lags_sequence: List of lag values
+
+        Returns:
+            Context length that satisfies: context_length + max(lags) <= seq_len
+        """
+        return seq_len - max(lags_sequence)
+
     # -- Abstract interface --------------------------------------------------
 
     @abstractmethod
@@ -449,11 +466,13 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             logging.info(f"[{self.config.model_type}] Skipping mask verification (model not ready).")
             return
 
-        dummy_ts = torch.randn(2, self.config.seq_len, self.n_ts_features, device=self.device)
+        # Use actual_context_length if available (for transformer models)
+        seq_len = self._actual_context_length if hasattr(self, '_actual_context_length') else self.config.seq_len
+        dummy_ts = torch.randn(2, seq_len, self.n_ts_features, device=self.device)
         dummy_static = torch.zeros(2, self.n_static_features, device=self.device)
-        full_mask = torch.ones(2, self.config.seq_len, dtype=torch.bool, device=self.device)
+        full_mask = torch.ones(2, seq_len, dtype=torch.bool, device=self.device)
         half_mask = full_mask.clone()
-        half_mask[:, self.config.seq_len // 2:] = False
+        half_mask[:, seq_len // 2:] = False
 
         with torch.no_grad():
             out_full = self.forward(dummy_ts, dummy_static, observed_mask=full_mask)
@@ -518,7 +537,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         """
         Compute MSE loss between predictions and targets.
 
-        Note: The validity_mask indicates which timesteps in the input sequence
+        The validity_mask indicates which timesteps in the input sequence
         are real vs padded. However, since the model outputs a SCALAR prediction
         per sample (yield), weighting by the fraction of valid timesteps would
         arbitrarily down-weight short-season samples. A 191-day season is not
@@ -1088,25 +1107,24 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
             # AutoformerForPrediction wraps outputs in distribution interface and detaches gradients
             # HFAutoformerModel returns raw encoder/decoder outputs with gradients preserved
 
+            # Standardize context length calculation for fair comparison
+            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            lags_sequence = [1] if self.config.lag_years > 0 else [0]
+            context_length = self._get_standardized_context_length(self.config.seq_len, lags_sequence)
+
             # Following baseline approach: process temporal features first,
             # then concatenate with static features AFTER getting pooled representation
             cfg = AutoformerConfig(
                 prediction_length=1,
-                context_length=self.config.seq_len,
-                lags_sequence=[1],
+                context_length=context_length,
+                lags_sequence=lags_sequence,
                 input_size=self.n_ts_features,  # Only temporal features
-                num_time_features=0,
+                num_time_features=0,  # Standardized: all models use 0
                 num_static_categorical_features=0,
                 # NOT using num_static_real_features - we'll concatenate later
                 d_model=64, num_attention_heads=4, ffn_dim=256, num_layers=3,
                 dropout=0.1,
             )
-
-            # Subtract 1 from context_length to accommodate lag=1
-            # HF constraint: context_length + max(lags_sequence) <= seq_len
-            # With seq_len=365, lag=1: context_length must be <= 364
-            # This matches the working script's approach (line 624 in cybenchAutoformer.py)
-            cfg.context_length = int(getattr(cfg, "context_length", self.config.seq_len)) - 1
 
             model = HFAutoformerModel(cfg)
 
@@ -1114,6 +1132,10 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
             self._actual_lags = list(model.config.lags_sequence)
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
+
+            logging.info(f"[Autoformer BUILD] CONFIG: seq_len={self.config.seq_len}, "
+                        f"context_length={self._actual_context_length}, lags={self._actual_lags}, "
+                        f"n_ts_features={self.n_ts_features}, n_static_features={self.n_static_features}")
 
             logging.info(f"[Autoformer BUILD] CONFIG: seq_len={self.config.seq_len}, "
                         f"context_length={self._actual_context_length}, lags={self._actual_lags}, "
@@ -1154,7 +1176,14 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
         """
         batch_size, seq_len = x_ts.shape[:2]
 
-        # Step 1: Process temporal features through Autoformer (NO static features yet)
+        # Truncate input to match context_length for fair comparison
+        if seq_len > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            seq_len = self._actual_context_length
+
+        #  Process temporal features through Autoformer (NO static features yet)
         # Request encoder outputs explicitly
         outputs = self.base_model(
             past_values=x_ts,
@@ -1166,13 +1195,13 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
             output_hidden_states=True,  # Request all hidden states
         )
 
-        # Step 2: Extract hidden state using shared helper
+        #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
-        # Step 3: Pool hidden state using shared helper
+        #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, d_model)
 
-        # Step 4: Concatenate with static features and pass through regression head
+        #  Concatenate with static features and pass through regression head
         combined = torch.cat([pooled, x_static], dim=-1)
         predictions = self.regression_head(combined).squeeze(-1)
 
@@ -1186,21 +1215,31 @@ class PatchTSTModel(BaseTimeSeriesModel):
         # First, load or create the base model
         if self.config.load_checkpoint:
             model = HFPatchTSTModel.from_pretrained(self.config.load_checkpoint)
+            # Extract config values from loaded model
+            self._actual_lags = list(model.config.lags_sequence) if hasattr(model.config, 'lags_sequence') else [1]
+            self._actual_num_time_features = int(model.config.num_time_features)
+            self._actual_context_length = int(model.config.context_length)
         else:
             patch_len = {"daily": 16, "weekly": 4, "dekad": 6}[self.config.aggregation]
             stride = {"daily": 8, "weekly": 2, "dekad": 3}[self.config.aggregation]
 
+            # Standardize context length calculation for fair comparison
+            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            requested_lags = [1] if self.config.lag_years > 0 else [0]
+            context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
+
             logging.info(f"[PatchTST BUILD] CONFIG: seq_len={self.config.seq_len}, "
-                        f"n_ts_features={self.n_ts_features}, n_static_features={self.n_static_features}, "
+                        f"context_length={context_length}, n_ts_features={self.n_ts_features}, "
+                        f"n_static_features={self.n_static_features}, "
                         f"patch_length={patch_len}, stride={stride}, aggregation={self.config.aggregation}")
 
             cfg = PatchTSTConfig(
                 prediction_length=1,
-                context_length=self.config.seq_len,
+                context_length=context_length,
                 # num_input_channels is the total number of input channels
                 # This should match n_ts_features (excluding time features since we pass them separately)
                 num_input_channels=self.n_ts_features,
-                num_time_features=self.num_time_features,
+                num_time_features=0,  # Standardized: all models use 0
                 # NOT using num_static_real_features - we'll concatenate later
                 d_model=64, num_attention_heads=4, ffn_dim=256, num_layers=3,
                 dropout=0.1,
@@ -1210,6 +1249,15 @@ class PatchTSTModel(BaseTimeSeriesModel):
 
             model = HFPatchTSTModel(cfg)
 
+            # READ BACK what HF actually stored (it may override our values)
+            self._actual_lags = list(model.config.lags_sequence) if hasattr(model.config, 'lags_sequence') else [1]
+            self._actual_num_time_features = int(model.config.num_time_features)
+            self._actual_context_length = int(model.config.context_length)
+
+            logging.info(f"[PatchTST] Config verification: context_length={model.config.context_length}, "
+                        f"num_input_channels={model.config.num_input_channels}, "
+                        f"num_time_features={model.config.num_time_features}")
+
             logging.info(f"[PatchTST] Config verification: context_length={model.config.context_length}, "
                         f"num_input_channels={model.config.num_input_channels}, num_time_features={model.config.num_time_features}")
 
@@ -1218,7 +1266,8 @@ class PatchTSTModel(BaseTimeSeriesModel):
         #   - (B, seq_len, d_model) for some configs
         #   - (B, n_channels, n_patches, d_model) for multivariate patch-based
         with torch.no_grad():
-            dummy = torch.zeros(1, self.config.seq_len, self.n_ts_features)
+            # Use actual_context_length to match model's expected input size
+            dummy = torch.zeros(1, self._actual_context_length, self.n_ts_features)
             out = model(past_values=dummy)
             h = self._extract_hidden_state(out)
             pooled = self._pool_hidden_state(h)
@@ -1251,15 +1300,23 @@ class PatchTSTModel(BaseTimeSeriesModel):
         Forward pass through PatchTST model.
         Following baseline pattern: temporal → pool → concat static → regression
         """
-        # Step 1: Process temporal features through PatchTST
+        # Truncate input to match context_length for fair comparison
+        B, T, C = x_ts.shape
+        if T > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            T = self._actual_context_length
+
+        #  Process temporal features through PatchTST
         # Pass past_observed_mask to prevent padded zeros from being used in attention
         past_observed_mask = observed_mask.unsqueeze(-1).expand(-1, -1, x_ts.shape[2]).float() if observed_mask is not None else None
         outputs = self.base_model(past_values=x_ts, past_observed_mask=past_observed_mask, future_values=None)
 
-        # Step 2: Extract hidden state using shared helper
+        #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
-        # Step 3: Pool hidden state using shared helper
+        #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, pooled_dim)
 
         # Validate against probed dimension (catches shape regressions)
@@ -1271,7 +1328,7 @@ class PatchTSTModel(BaseTimeSeriesModel):
                 f"between _build_model() and forward(). h.shape={h.shape}"
             )
 
-        # Step 4: Concatenate with static features and pass through regression head
+        #  Concatenate with static features and pass through regression head
         combined = torch.cat([pooled, x_static], dim=-1)
         predictions = self.regression_head(combined).squeeze(-1)
 
@@ -1283,44 +1340,56 @@ class TSMixerModel(BaseTimeSeriesModel):
     """TSMixer: all-MLP architecture — simple, fast, surprisingly competitive."""
 
     def _build_model(self) -> nn.Module:
+        # Standardize context length calculation for fair comparison
+        # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+        requested_lags = [1] if self.config.lag_years > 0 else [0]
+        context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
+
         # First, load or create the base model
+        # For fair comparison, only use base model (consistent with other architectures)
         if self.config.load_checkpoint:
             if TimeSeriesMixerModel is not None:
                 model = TimeSeriesMixerModel.from_pretrained(self.config.load_checkpoint)
+                self._uses_for_prediction = False
             else:
-                model = TimeSeriesMixerForPrediction.from_pretrained(self.config.load_checkpoint)
+                raise ImportError(
+                    "Cannot load TSMixer checkpoint: TimeSeriesMixerModel (base model) not available. "
+                    "For fair comparison with other architectures, TSMixer requires the base model, "
+                    "not the ForPrediction variant. Please upgrade transformers or use a different model."
+                )
         else:
             logging.info(f"[TSMixer BUILD] CONFIG: seq_len={self.config.seq_len}, "
-                        f"n_ts_features={self.n_ts_features}, n_static_features={self.n_static_features}")
+                        f"context_length={context_length}, n_ts_features={self.n_ts_features}, "
+                        f"n_static_features={self.n_static_features}")
 
-            # Use base model if available for gradient flow
+            # For fair comparison, always use base model (not ForPrediction variant)
             if TimeSeriesMixerModel is not None:
                 model = TimeSeriesMixerModel(TimeSeriesMixerConfig(
                     prediction_length=1,
-                    context_length=self.config.seq_len,
+                    context_length=context_length,
                     input_size=self.n_ts_features,
-                    num_time_features=self.num_time_features,
+                    num_time_features=0,  # Standardized: all models use 0
                     # NOT using num_static_real_features - we'll concatenate later
                     hidden_size=64, num_layers=3, dropout=0.1, expansion_factor=2,
                 ))
-            else:
-                logging.warning("TimeSeriesMixerModel not available, using ForPrediction")
-                model = TimeSeriesMixerForPrediction(TimeSeriesMixerConfig(
-                    prediction_length=1,
-                    context_length=self.config.seq_len,
-                    input_size=self.n_ts_features,
-                    num_time_features=self.num_time_features,
-                    num_static_categorical_features=0,
-                    num_static_real_features=self.n_static_features,
-                    hidden_size=64, num_layers=3, dropout=0.1, expansion_factor=2,
-                ))
 
-        # Probe the actual output shape to build regression head correctly
-        # TSMixer can output different shapes depending on configuration and variant
-        if TimeSeriesMixerModel is not None:
-            # Base model - we can probe the output shape
+                # READ BACK what HF actually stored (it may override our values)
+                self._actual_lags = list(model.config.lags_sequence) if hasattr(model.config, 'lags_sequence') else [1]
+                self._actual_num_time_features = int(model.config.num_time_features)
+                self._actual_context_length = int(model.config.context_length)
+
+                self._uses_for_prediction = False
+            else:
+                raise ImportError(
+                    "TSMixer base model (TimeSeriesMixerModel) not available in this transformers version. "
+                    "For fair comparison with other architectures, TSMixer requires the base model. "
+                    "Please upgrade transformers or use a different model."
+                )
+
+            # Probe the actual output shape to build regression head correctly
             with torch.no_grad():
-                dummy = torch.zeros(1, self.config.seq_len, self.n_ts_features)
+                # Use actual_context_length to match model's expected input size
+                dummy = torch.zeros(1, self._actual_context_length, self.n_ts_features)
                 out = model(past_values=dummy)
                 h = self._extract_hidden_state(out)
                 pooled = self._pool_hidden_state(h)
@@ -1340,28 +1409,8 @@ class TSMixerModel(BaseTimeSeriesModel):
 
             # Store for validation in forward()
             self._pooled_dim = pooled_dim
-            self._uses_for_prediction = False
 
             logging.info(f"[TSMixer BUILD] Created regression head: pooled_dim={pooled_dim}, "
-                        f"combined_dim={combined_dim}, hidden_dim={combined_dim // 2}")
-        else:
-            # ForPrediction variant - outputs loc directly, no hidden state
-            # We can't probe in the same way, so we use the known hidden_size
-            hidden_size = 64
-            combined_dim = hidden_size + self.n_static_features
-            self.regression_head = nn.Sequential(
-                nn.Linear(combined_dim, combined_dim // 2),
-                nn.LayerNorm(combined_dim // 2),
-                nn.ReLU(),
-                nn.Dropout(0.1),
-                nn.Linear(combined_dim // 2, 1)
-            )
-
-            # Store for validation in forward()
-            self._pooled_dim = None  # Not used for ForPrediction
-            self._uses_for_prediction = True
-
-            logging.info(f"[TSMixer BUILD] ForPrediction variant: using hidden_size={hidden_size}, "
                         f"combined_dim={combined_dim}, hidden_dim={combined_dim // 2}")
 
         self._model_ready = True
@@ -1380,18 +1429,21 @@ class TSMixerModel(BaseTimeSeriesModel):
         Returns:
             Predictions of shape (batch,)
         """
-        # Step 1: Process temporal features through TSMixer
+        # Truncate input to match context_length for fair comparison
+        B, T, C = x_ts.shape
+        if T > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            T = self._actual_context_length
+
+        #  Process temporal features through TSMixer
         outputs = self.base_model(past_values=x_ts)
 
-        # Handle ForPrediction variant (no gradient flow through base model)
-        if self._uses_for_prediction:
-            logging.warning("Using ForPrediction variant - gradients will not flow through TSMixer")
-            return outputs.loc.reshape(-1)
-
-        # Step 2: Extract hidden state using shared helper
+        #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
-        # Step 3: Pool hidden state using shared helper
+        #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, pooled_dim)
 
         # Validate against probed dimension (catches shape regressions)
@@ -1403,7 +1455,7 @@ class TSMixerModel(BaseTimeSeriesModel):
                 f"between _build_model() and forward(). h.shape={h.shape}"
             )
 
-        # Step 4: Concatenate with static features and pass through regression head
+        #  Concatenate with static features and pass through regression head
         combined = torch.cat([pooled, x_static], dim=-1)
         predictions = self.regression_head(combined).squeeze(-1)
 
@@ -1421,11 +1473,10 @@ class InformerModel(BaseTimeSeriesModel):
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
         else:
-            # context_length must leave room for lags
-            # HF constraint: context_length + max(lags_sequence) <= seq_len
-            # So: context_length = seq_len - max(lags_sequence)
-            requested_lags = [1]
-            context_length = self.config.seq_len - max(requested_lags)
+            # Standardize context length calculation for fair comparison
+            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            requested_lags = [1] if self.config.lag_years > 0 else [0]
+            context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
             # Build model with adjusted context_length (BASELINE PATTERN)
             cfg = InformerConfig(
@@ -1433,7 +1484,7 @@ class InformerModel(BaseTimeSeriesModel):
                 context_length=context_length,
                 lags_sequence=requested_lags,
                 input_size=self.n_ts_features,  # Only temporal features
-                num_time_features=0,
+                num_time_features=0,  # Standardized: all models use 0
                 # NOT using num_static_real_features - we'll concatenate later
                 d_model=64, num_attention_heads=4, ffn_dim=256, num_layers=3,
                 dropout=0.1,
@@ -1474,19 +1525,27 @@ class InformerModel(BaseTimeSeriesModel):
         """Forward pass through Informer model. Following baseline pattern."""
         batch_size, seq_len = x_ts.shape[:2]
 
-        # Step 1: Process temporal features through Informer
-        past_time_features = torch.zeros(batch_size, seq_len, self._actual_num_time_features, device=x_ts.device, dtype=x_ts.dtype)
+        # Truncate input to match context_length for fair comparison
+        if seq_len > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            seq_len = self._actual_context_length
+
+        #  Process temporal features through Informer
+        # Standardized: use 0 for num_time_features consistently across all models
+        past_time_features = torch.zeros(batch_size, seq_len, 0, device=x_ts.device, dtype=x_ts.dtype)
         past_observed_mask = observed_mask.unsqueeze(-1).expand(-1, -1, x_ts.shape[2]).float() if observed_mask is not None else None
 
         outputs = self.base_model(past_values=x_ts, past_time_features=past_time_features, past_observed_mask=past_observed_mask, return_dict=True)
 
-        # Step 2: Extract hidden state using shared helper
+        #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
-        # Step 3: Pool hidden state using shared helper
+        #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, d_model)
 
-        # Step 4: Concatenate with static features and pass through regression head
+        #  Concatenate with static features and pass through regression head
         combined = torch.cat([pooled, x_static], dim=-1)
         predictions = self.regression_head(combined).squeeze(-1)
 
@@ -1512,11 +1571,10 @@ class TSTModel(BaseTimeSeriesModel):
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
         else:
-            # context_length must leave room for lags
-            # HF constraint: context_length + max(lags_sequence) <= seq_len
-            # So: context_length = seq_len - max(lags_sequence)
-            requested_lags = [1]
-            context_length = self.config.seq_len - max(requested_lags)
+            # Standardize context length calculation for fair comparison
+            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            requested_lags = [1] if self.config.lag_years > 0 else [0]
+            context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
             # Build model with adjusted context_length (BASELINE PATTERN)
             cfg = TimeSeriesTransformerConfig(
@@ -1524,7 +1582,7 @@ class TSTModel(BaseTimeSeriesModel):
                 context_length=context_length,
                 lags_sequence=requested_lags,
                 input_size=self.n_ts_features,  # Only temporal features
-                num_time_features=0,
+                num_time_features=0,  # Standardized: all models use 0
                 # NOT using num_static_real_features - we'll concatenate later
                 d_model=64, num_attention_heads=4, num_hidden_layers=3,
                 dim_feedforward=256, dropout=0.1, attention_probs_dropout_prob=0.1,
@@ -1567,19 +1625,26 @@ class TSTModel(BaseTimeSeriesModel):
         """Forward pass through TST model. Following baseline pattern."""
         batch_size, seq_len = x_ts.shape[:2]
 
-        # Step 1: Process temporal features through TST
+        # Truncate input to match context_length for fair comparison
+        if seq_len > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            seq_len = self._actual_context_length
+
+        #  Process temporal features through TST
         past_time_features = torch.zeros(batch_size, seq_len, self._actual_num_time_features, device=x_ts.device, dtype=x_ts.dtype)
         past_observed_mask = observed_mask.unsqueeze(-1).expand(-1, -1, x_ts.shape[2]).float() if observed_mask is not None else None
 
         outputs = self.base_model(past_values=x_ts, past_time_features=past_time_features, past_observed_mask=past_observed_mask, return_dict=True)
 
-        # Step 2: Extract hidden state using shared helper
+        #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
-        # Step 3: Pool hidden state using shared helper
+        #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, d_model)
 
-        # Step 4: Concatenate with static features and pass through regression head
+        #  Concatenate with static features and pass through regression head
         combined = torch.cat([pooled, x_static], dim=-1)
         predictions = self.regression_head(combined).squeeze(-1)
 
@@ -1830,14 +1895,24 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
         d_ff = 256
         dropout = 0.1
 
-        seq_len = self.config.seq_len
+        # CRITICAL: Calculate effective sequence length for alignment with linear models
+        # iTransformer doesn't use lags in the traditional sense, but for consistency
+        # we should truncate to the same context length as other models
+        requested_lags = [1] if self.config.lag_years > 0 else [0]
+        context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
+
+        seq_len = context_length  # Use context_length, not full seq_len
         n_channels = self.n_ts_features
 
         logging.info(
-            f"[iTransformer BUILD] seq_len={seq_len}, n_channels={n_channels}, "
-            f"n_static={self.n_static_features}, hidden_size={hidden_size}, "
+            f"[iTransformer BUILD] seq_len={self.config.seq_len}, context_length={context_length}, "
+            f"n_channels={n_channels}, n_static={self.n_static_features}, hidden_size={hidden_size}, "
             f"n_heads={n_heads}, e_layers={e_layers}"
         )
+
+        # Store context_length for forward pass truncation
+        self._actual_context_length = context_length
+        self._actual_lags = requested_lags
 
         # Inverted embedding: projects time dimension to hidden for each channel
         # Input: [B, T, C] -> permute to [B, C, T] -> project T to hidden -> [B, C, hidden]
@@ -1871,12 +1946,20 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
         self.channel_projection = nn.Linear(hidden_size, 1)
 
         # Final regression head: combines pooled channel representations with static features
+        # Standardized to 2-layer MLP for consistency with other models
         head_input_dim = n_channels + self.n_static_features
-        self.regression_head = nn.Linear(head_input_dim, 1)
+        self.regression_head = nn.Sequential(
+            nn.Linear(head_input_dim, head_input_dim // 2),
+            nn.LayerNorm(head_input_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(head_input_dim // 2, 1)
+        )
 
         logging.info(
             f"[iTransformer BUILD] head_input_dim={head_input_dim} "
-            f"(n_channels={n_channels} + static={self.n_static_features})"
+            f"(n_channels={n_channels} + static={self.n_static_features}), "
+            f"hidden_dim={head_input_dim // 2}"
         )
 
         self._model_ready = True
@@ -1888,34 +1971,42 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
         Forward pass for iTransformer.
 
         Data flow:
-          1. Apply RevIN normalization (per-instance)
-          2. Inverted embedding: [B, T, C] -> [B, C, hidden]
-          3. Transformer encoder: channels attend to each other
-          4. Project each channel to scalar -> [B, C]
-          5. Masked pooling across channels (if needed)
-          6. Concatenate with static features -> scalar prediction
+          1. Truncate to context_length for alignment with other models
+          2. Apply RevIN normalization (per-instance)
+          3. Inverted embedding: [B, T, C] -> [B, C, hidden]
+          4. Transformer encoder: channels attend to each other
+          5. Project each channel to scalar -> [B, C]
+          6. Masked pooling across channels (if needed)
+          7. Concatenate with static features -> scalar prediction
         """
         B, T, C = x_ts.shape
 
-        # Step 1: RevIN normalization
+        #  Truncate to context_length for alignment with linear models
+        if T > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            T = self._actual_context_length
+
+        #  RevIN normalization
         if self.config.use_revin:
             x_ts = self._apply_revin_normalization(x_ts, observed_mask)
         else:
             x_ts = self._normalize_time_series(x_ts, observed_mask)
 
-        # Step 2: Inverted embedding (nixtla's key innovation)
+        #  Inverted embedding (nixtla's key innovation)
         # Permute from [B, T, C] to [B, C, T], then project T to hidden
         x_ts_permuted = x_ts.permute(0, 2, 1)  # [B, C, T]
         embedded = self.inverted_embedding(x_ts_permuted)  # [B, C, hidden]
         embedded = self.embedding_dropout(embedded)
 
-        # Step 3: Transformer encoder (channels as tokens)
+        #  Transformer encoder (channels as tokens)
         enc_out, _ = self.encoder(embedded, attn_mask=None)  # [B, C, hidden]
 
-        # Step 4: Project each channel to scalar representation
+        #  Project each channel to scalar representation
         channel_scalars = self.channel_projection(enc_out).squeeze(-1)  # [B, C]
 
-        # Step 5: Masked pooling across channels
+        #  Masked pooling across channels
         # Handle missing channels (all NaN for a given variable across time)
         channel_validity = (~torch.isnan(x_ts).any(dim=1)).float()  # [B, C]
         pooled_channels = channel_scalars * channel_validity  # Zero out invalid channels
@@ -1937,7 +2028,7 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
             mean_per_sample
         )  # [B, C]
 
-        # Step 6: Concatenate with static features and predict
+        #  Concatenate with static features and predict
         combined = torch.cat([filled_channels, x_static], dim=-1)  # [B, C + n_static]
         return self.regression_head(combined).squeeze(-1)  # [B]
 
@@ -1976,11 +2067,19 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         d_ff = 256
         dropout = 0.1
 
-        seq_len = self.config.seq_len
+        # CRITICAL: Calculate effective sequence length for alignment with linear models
+        requested_lags = [1] if self.config.lag_years > 0 else [0]
+        context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
+
+        seq_len = context_length  # Use context_length, not full seq_len
         n_channels = self.n_ts_features
 
         # Store hidden_size as instance attribute for use in forward()
         self.hidden_size = hidden_size
+
+        # Store context_length for forward pass truncation
+        self._actual_context_length = context_length
+        self._actual_lags = requested_lags
 
         # Patching parameters
         if self.config.aggregation == "daily":
@@ -1993,8 +2092,8 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         self.patch_num = max(1, seq_len // self.patch_len)
 
         logging.info(
-            f"[TimeXer BUILD] seq_len={seq_len}, patch_len={self.patch_len}, "
-            f"patch_num={self.patch_num}, n_channels={n_channels}, "
+            f"[TimeXer BUILD] seq_len={self.config.seq_len}, context_length={context_length}, "
+            f"patch_len={self.patch_len}, patch_num={self.patch_num}, n_channels={n_channels}, "
             f"n_static={self.n_static_features}, hidden_size={hidden_size}, "
             f"n_heads={n_heads}, e_layers={e_layers}"
         )
@@ -2041,13 +2140,20 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         self.head_dropout = nn.Dropout(dropout)
 
         # Final regression head: combines channel representations with static features
+        # Standardized to 2-layer MLP for consistency with other models
         head_input_dim = n_channels + self.n_static_features
-        self.regression_head = nn.Linear(head_input_dim, 1)
+        self.regression_head = nn.Sequential(
+            nn.Linear(head_input_dim, head_input_dim // 2),
+            nn.LayerNorm(head_input_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(head_input_dim // 2, 1)
+        )
 
         logging.info(
             f"[TimeXer BUILD] head_input_dim={head_input_dim} "
             f"(n_channels={n_channels} + static={self.n_static_features}), "
-            f"head_nf={head_nf}"
+            f"head_nf={head_nf}, hidden_dim={head_input_dim // 2}"
         )
 
         self._model_ready = True
@@ -2068,17 +2174,24 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         """
         B, T, C = x_ts.shape
 
-        # Step 1: RevIN normalization
+        #  Truncate to context_length for alignment with linear models
+        if T > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            T = self._actual_context_length
+
+        #  RevIN normalization
         if self.config.use_revin:
             x_ts = self._apply_revin_normalization(x_ts, observed_mask)
         else:
             x_ts = self._normalize_time_series(x_ts, observed_mask)
 
-        # Step 2: Build endogenous series from lag yields
+        #  Build endogenous series from lag yields
         # This creates a constant series (broadcast scalar) for patching
         endo = self._build_endogenous_series_lag(x_static, x_ts, observed_mask)  # [B, T, 1]
 
-        # Step 3: Endogenous patching (nixtla's approach)
+        #  Endogenous patching (nixtla's approach)
         # unfold: [B, T, 1] -> [B, 1, patch_num, patch_len]
         endo_patched = endo.unfold(dimension=1, size=self.patch_len, step=self.patch_len)
         endo_patched = endo_patched.squeeze(2)  # [B, patch_num, patch_len]
@@ -2114,7 +2227,7 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         endo_embed = endo_with_glb.reshape(B * C, -1, hidden_size)
         endo_embed = self.endo_dropout(endo_embed)
 
-        # Step 4: Exogenous inverted embedding (nixtla's approach)
+        #  Exogenous inverted embedding (nixtla's approach)
         # Permute [B, T, C] to [B, C, T], project T to hidden
         x_ts_permuted = x_ts.permute(0, 2, 1)  # [B, C, T]
         exo_embed = self.exo_inverted_embedding(x_ts_permuted)  # [B, C, hidden_size]
@@ -2126,10 +2239,10 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         exo_expanded = exo_embed.unsqueeze(1).expand(B, C, -1, -1)  # [B, C, C, hidden]
         exo_expanded = exo_expanded.reshape(B * C, C, hidden_size)  # [B*C, C, hidden]
 
-        # Step 5: Encoder with self- and cross-attention
+        #  Encoder with self- and cross-attention
         enc_out = self.encoder(endo_embed, exo_expanded)  # [B*C, (patch_num+1), hidden]
 
-        # Step 6: Reshape and project per channel
+        #  Reshape and project per channel
         enc_out = enc_out.reshape(B, C, -1, self.hidden_size)  # [B, C, (patch_num+1), hidden]
 
         # Flatten and project each channel
@@ -2138,7 +2251,7 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         channel_repr = self.channel_projection(flat).squeeze(-1)  # [B, C]
         channel_repr = self.head_dropout(channel_repr)
 
-        # Step 7: Handle missing channels
+        #  Handle missing channels
         channel_validity = (~torch.isnan(x_ts).any(dim=1)).float()  # [B, C]
         valid_channel_repr = channel_repr * channel_validity  # [B, C]
         n_valid = channel_validity.sum(dim=-1, keepdim=True).clamp(min=1)  # [B, 1]
@@ -2153,7 +2266,7 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
             mean_per_sample
         )  # [B, C]
 
-        # Step 8: Concatenate with static features and predict
+        #  Concatenate with static features and predict
         combined = torch.cat([filled_channels, x_static], dim=-1)  # [B, C + n_static]
         return self.regression_head(combined).squeeze(-1)  # [B]
 
@@ -2188,6 +2301,289 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         return endo
 
 
+# ============================================================================
+# TimesNet Implementation
+# ============================================================================
+
+class Inception_Block_V1(nn.Module):
+    """
+    Inception-style convolutional block for TimesNet.
+
+    Uses multiple kernel sizes to capture different temporal patterns,
+    then concatenates the outputs.
+    """
+    def __init__(self, in_channels, out_channels, num_kernels=6, init_weight=True):
+        super(Inception_Block_V1, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.num_kernels = num_kernels
+        self.layers = nn.ModuleList()
+
+        # Create multiple conv layers with different ODD kernel sizes
+        # Using odd kernels (1, 3, 5, 7, ...) ensures proper spatial dimension preservation
+        # padding = kernel_size // 2 maintains output size = input size
+        for i in range(self.num_kernels):
+            kernel_size = 2 * i + 1  # Generates [1, 3, 5, 7, 9, 11] for num_kernels=6
+            padding = i  # padding = (kernel_size - 1) // 2 ensures output size = input size
+            self.layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=1, padding=padding))
+
+        if init_weight:
+            self._initialize_weights()
+
+    def _initialize_weights(self):
+        """Initialize weights using Kaiming initialization."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        """
+        Forward pass through inception block.
+
+        Args:
+            x: Input tensor of shape (batch, in_channels, time, features)
+
+        Returns:
+            Output tensor of shape (batch, out_channels, time, features)
+        """
+        res_list = []
+        for i in range(self.num_kernels):
+            res_list.append(self.layers[i](x))
+        res = torch.stack(res_list, dim=-1).mean(-1)
+        return res
+
+
+class TimesBlock(nn.Module):
+    """
+    TimesNet block: 1D to 2D transformation using FFT-based period detection.
+
+    The key idea is to transform 1D time series into 2D tensors based on
+    detected periods, then apply 2D convolutions to capture temporal variations.
+    """
+    def __init__(self, seq_len, pred_len, top_k, d_model, d_ffn, num_kernels=6):
+        super(TimesBlock, self).__init__()
+        self.seq_len = seq_len
+        self.pred_len = pred_len
+        self.k = top_k
+
+        # Parameter-efficient design with two Inception blocks
+        self.conv = nn.Sequential(
+            Inception_Block_V1(d_model, d_ffn, num_kernels=num_kernels),
+            nn.GELU(),
+            Inception_Block_V1(d_ffn, d_model, num_kernels=num_kernels)
+        )
+
+    def forward(self, x):
+        """
+        Forward pass through TimesBlock.
+
+        Args:
+            x: Input tensor of shape (batch, seq_len, n_channels)
+
+        Returns:
+            Output tensor of shape (batch, seq_len, n_channels)
+        """
+        B, T, N = x.size()
+
+        #  FFT-based period detection
+        period_list, period_weight = self._fft_for_period(x, self.k)
+
+        #  Apply 2D conv for each detected period with per-period padding
+        res = []
+        for i in range(self.k):
+            period = period_list[i]
+
+            # Padding for this specific period to make it divisible
+            if T % period != 0:
+                length = ((T // period) + 1) * period
+                padding = torch.zeros([B, length - T, N]).to(x.device)
+                out = torch.cat([x, padding], dim=1)
+            else:
+                length = T
+                out = x
+
+            # Reshape: treat period as the "height" dimension for 2D conv
+            # (B, length, N) -> (B, length//period, period, N) -> (B, N, length//period, period)
+            out = out.reshape(B, length // period, period, N).permute(0, 3, 1, 2).contiguous()
+
+            # Apply 2D convolution: captures 2D variations in time series
+            out = self.conv(out)
+
+            # Reshape back: (B, N, length//period, period) -> (B, length//period, period, N) -> (B, length, N)
+            out = out.permute(0, 2, 3, 1).reshape(B, -1, N)
+
+            # Truncate back to original T (all branches produce same output size)
+            res.append(out[:, :T, :])
+
+        #  Adaptive aggregation of multiple period-based representations
+        res = torch.stack(res, dim=-1)
+        period_weight = F.softmax(period_weight, dim=1)
+        period_weight = period_weight.unsqueeze(1).unsqueeze(1).repeat(1, T, N, 1)
+        res = torch.sum(res * period_weight, -1)
+
+        #  Residual connection
+        res = res + x
+        return res
+
+    @staticmethod
+    def _fft_for_period(x, k=2):
+        """
+        Use FFT to find top-k dominant periods in the time series.
+
+        Args:
+            x: Input tensor of shape (batch, seq_len, n_channels)
+            k: Number of top periods to extract
+
+        Returns:
+            period_list: List of top-k periods
+            period_weight: Importance weights for each period
+        """
+        # Apply FFT along the time dimension
+        xf = torch.fft.rfft(x, dim=1)
+
+        # Find period by analyzing amplitudes
+        # Average over batch and channels to get global frequency importance
+        frequency_list = abs(xf).mean(0).mean(-1)
+        frequency_list[0] = 0  # Remove DC component (zero frequency)
+
+        # Get top-k frequencies
+        _, top_list = torch.topk(frequency_list, k)
+        top_list = top_list.detach().cpu().numpy()
+
+        # Convert frequency indices to periods
+        period = x.shape[1] // top_list
+
+        # Get amplitude-based weights for adaptive aggregation
+        period_weight = abs(xf).mean(-1)[:, top_list]
+
+        return period, period_weight
+
+
+class TimesNetModel(BaseTimeSeriesModel):
+    """
+    TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis.
+
+    Key innovation: Transforms 1D time series into 2D tensors using FFT-based
+    period detection, then applies 2D convolutions to capture complex temporal patterns.
+
+    Adapted from: https://github.com/thuml/Time-Series-Library
+
+    Modified for crop yield prediction (regression task instead of forecasting):
+    - Removed predict_linear layer (used for sequence expansion in forecasting)
+    - Added pooling after TimesNet blocks
+    - Concatenate pooled representation with static features
+    - Single regression head for yield prediction
+    """
+
+    def _build_model(self) -> nn.Module:
+        """Build TimesNet model for yield prediction."""
+        # Standardize context length calculation for fair comparison
+        # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+        requested_lags = [1] if self.config.lag_years > 0 else [0]
+        context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
+
+        # TimesNet hyperparameters
+        d_model = 64
+        top_k = 3  # Number of periods to detect
+        num_kernels = 6  # Number of kernel sizes in Inception block
+        num_layers = 3  # Number of TimesNet blocks
+        e_layers = num_layers
+        d_ffn = 256  # Hidden dimension in Inception blocks
+        dropout = 0.1
+
+        logging.info(f"[TimesNet BUILD] CONFIG: seq_len={self.config.seq_len}, "
+                    f"context_length={context_length}, n_ts_features={self.n_ts_features}, "
+                    f"n_static_features={self.n_static_features}, "
+                    f"top_k={top_k}, num_kernels={num_kernels}, num_layers={num_layers}")
+
+        # Store for forward pass
+        self._actual_context_length = context_length
+        self._actual_lags = requested_lags
+
+        # Create TimesNet blocks
+        self.times_net_blocks = nn.ModuleList([
+            TimesBlock(
+                seq_len=context_length,
+                pred_len=1,  # Not used in regression, but needed for block structure
+                top_k=top_k,
+                d_model=d_model,
+                d_ffn=d_ffn,
+                num_kernels=num_kernels
+            )
+            for _ in range(e_layers)
+        ])
+
+        # Input embedding: project time series features to d_model
+        self.enc_embedding = nn.Linear(self.n_ts_features, d_model)
+
+        # Layer normalization after each block
+        self.layer_norm = nn.LayerNorm(d_model)
+
+        # Create regression head: pooled temporal features + static features
+        combined_dim = d_model + self.n_static_features
+        self.regression_head = nn.Sequential(
+            nn.Linear(combined_dim, combined_dim // 2),
+            nn.LayerNorm(combined_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(combined_dim // 2, 1)
+        )
+
+        logging.info(f"[TimesNet BUILD] Created regression head: d_model={d_model}, "
+                    f"combined_dim={combined_dim}, hidden_dim={combined_dim // 2}")
+
+        self._model_ready = True
+
+        # Return a dummy module (we use the blocks directly)
+        return nn.Sequential()
+
+    def forward(self, x_ts: torch.Tensor, x_static: torch.Tensor,
+                observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Forward pass through TimesNet.
+
+        Args:
+            x_ts: Time series features, shape (batch, seq_len, n_ts_features)
+            x_static: Static features, shape (batch, n_static_features)
+            observed_mask: Boolean mask of shape (batch, seq_len) for valid timesteps
+
+        Returns:
+            Predictions of shape (batch,)
+        """
+        batch_size, seq_len = x_ts.shape[:2]
+
+        # Truncate input to match context_length for fair comparison
+        if seq_len > self._actual_context_length:
+            x_ts = x_ts[:, :self._actual_context_length, :]
+            if observed_mask is not None:
+                observed_mask = observed_mask[:, :self._actual_context_length]
+            seq_len = self._actual_context_length
+
+        #  Input embedding
+        # (B, T, n_ts_features) -> (B, T, d_model)
+        enc_out = self.enc_embedding(x_ts)
+
+        #  Apply TimesNet blocks
+        # TimesNet doesn't use normalization in the original implementation, but we add it for stability
+        for block in self.times_net_blocks:
+            enc_out = block(enc_out)
+            enc_out = self.layer_norm(enc_out)
+
+        #  Pool hidden state over time dimension
+        # (B, T, d_model) -> (B, d_model)
+        pooled = enc_out.mean(dim=1)
+
+        #  Concatenate with static features
+        combined = torch.cat([pooled, x_static], dim=-1)
+
+        #  Regression head
+        predictions = self.regression_head(combined).squeeze(-1)
+
+        return predictions
+
+
 def create_model(config: TSTModelConfig) -> BaseTimeSeriesModel:
     model_map = {
         "autoformer": AutoformerYieldModel,
@@ -2196,6 +2592,7 @@ def create_model(config: TSTModelConfig) -> BaseTimeSeriesModel:
         "tst": TSTModel,
         "itransformer": iTransformerYieldModel,
         "timexer": TimeXerYieldModel,
+        "timesnet": TimesNetModel,
     }
     # Only register TSMixer if import succeeded
     if TimeSeriesMixerForPrediction is not None:

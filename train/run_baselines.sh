@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=cybench
-#SBATCH --time=6:00:00
+#SBATCH --time=24:00:00
 #SBATCH -p gpu_a100
 #SBATCH -n 1
 #SBATCH --gpus=1
@@ -147,8 +147,8 @@ echo "  Crops: ${crops[@]}"
 echo "  Maize countries with >=$MIN_YEARS years: ${!MAIZE_COUNTRIES[@]}"
 echo "  Wheat countries with >=$MIN_YEARS years: ${!WHEAT_COUNTRIES[@]}"
 
-hf_models=("autoformer" "informer" "patchtst" "tsmixer" "tst" "itransformer" "timexer")
-linear_models=("nlinear" "dlinear" "xlinear" "rlinear")
+hf_models=("autoformer" "informer" "patchtst" "tsmixer" "tst" "itransformer" "timexer", "tsmixer")
+linear_models=("nlinear" "dlinear" "xlinear" "rlinear", "olinear")
 
 # -----------------------------
 # Concurrency control
@@ -170,7 +170,7 @@ for i in $(seq 1 $MAX_PARALLEL); do
     echo >&3
 done
 
-mkdir -p checkpoints/results log
+mkdir -p modelCheckpoints/results log
 
 # -----------------------------
 # run_model: acquires a token,
@@ -198,9 +198,9 @@ run_model() {
 merge_results() {
     echo "Merging results..."
     for metric in nrmse mape r2 rmse mae mse smape; do
-        final_csv="checkpoints/results/${metric}.csv"
+        final_csv="modelCheckpoints/results/${metric}.csv"
         first=1
-        for tmp_dir in checkpoints/results/tmp_*/; do
+        for tmp_dir in modelCheckpoints/results/tmp_*/; do
             src="${tmp_dir}${metric}.csv"
             if [ -f "$src" ]; then
                 if [ $first -eq 1 ]; then
@@ -213,7 +213,7 @@ merge_results() {
         done
         echo "Merged $metric.csv"
     done
-    rm -rf checkpoints/results/tmp_*/
+    rm -rf modelCheckpoints/results/tmp_*/
 }
 
 # Function to get countries for a crop
@@ -235,7 +235,7 @@ sort_countries() {
 # NEW: Check if result file exists and is non-empty
 # -----------------------------
 is_completed() {
-    local result_file="checkpoints/results/${1}_${2}_${3}.txt"
+    local result_file="modelCheckpoints/results/${1}_${2}_${3}.txt"
     if [ -f "$result_file" ] && [ -s "$result_file" ]; then
         return 0  # Completed
     else
@@ -270,7 +270,7 @@ for crop in "${crops[@]}"; do
                continue
            fi
 
-           tmp_dir="checkpoints/results/tmp_${model}_${country}_${crop}"
+           tmp_dir="modelCheckpoints/results/tmp_${model}_${country}_${crop}"
            mkdir -p "$tmp_dir"
 
            echo "Starting $model $country $crop"
@@ -281,17 +281,18 @@ for crop in "${crops[@]}"; do
                --country $country
                --model_type $model
                --aggregation daily
-               --batch_size 32
+               --batch_size 64
                --epochs 50
                --lag_years 0
                --use_cwb_feature
                --test_years 5
-               --save_checkpoint_dir checkpoints/yield-$model-cybench/$country/$crop/
+               --save_checkpoint_dir modelCheckpoints/yield-$model-cybench/$country/$crop/
+               --wandb_project AAAI2027-CYP
                --results_dir "$tmp_dir"
            )
 
            run_model \
-               "checkpoints/results/${model}_${country}_${crop}.txt" \
+               "modelCheckpoints/results/${model}_${country}_${crop}.txt" \
                "${cmd[@]}"
 
        done
@@ -315,7 +316,7 @@ for crop in "${crops[@]}"; do
                continue
            fi
 
-           tmp_dir="checkpoints/results/tmp_${model}_${country}_${crop}"
+           tmp_dir="modelCheckpoints/results/tmp_${model}_${country}_${crop}"
            mkdir -p "$tmp_dir"
 
            echo "Starting $model $country $crop"
@@ -326,17 +327,18 @@ for crop in "${crops[@]}"; do
                --country $country
                --model_type $model
                --aggregation daily
-               --batch_size 32
+               --batch_size 64
                --epochs 50
                --lag_years 0
                --test_years 5
                --use_cwb_feature
-               --save_checkpoint_dir checkpoints/yield-$model-cybench/$country/$crop/
+               --wandb_project AAAI2027-CYP
+               --save_checkpoint_dir modelCheckpoints/yield-$model-cybench/$country/$crop/
                --results_dir "$tmp_dir"
            )
 
            run_model \
-               "checkpoints/results/${model}_${country}_${crop}.txt" \
+               "modelCheckpoints/results/${model}_${country}_${crop}.txt" \
                "${cmd[@]}"
 
        done
@@ -359,7 +361,7 @@ for crop in "${crops[@]}"; do
             continue
         fi
 
-        tmp_dir="checkpoints/results/tmp_trend_${country}_${crop}"
+        tmp_dir="modelCheckpoints/results/tmp_trend_${country}_${crop}"
         mkdir -p "$tmp_dir"
 
         echo "Starting trend $country $crop"
@@ -372,14 +374,16 @@ for crop in "${crops[@]}"; do
             --aggregation daily
             --test_years 5
             --lag_years 2
+            --batch_size 64
             --include_spatial_features
             --use_cwb_feature
-            --save_checkpoint_dir checkpoints/yield-trend-cybench/$country/$crop/
+            --wandb_project AAAI2027-CYP
+            --save_checkpoint_dir modelCheckpoints/yield-trend-cybench/$country/$crop/
             --results_dir "$tmp_dir"
         )
 
         run_model \
-            "checkpoints/results/trend_${country}_${crop}.txt" \
+            "modelCheckpoints/results/trend_${country}_${crop}.txt" \
             "${cmd[@]}"
 
     done

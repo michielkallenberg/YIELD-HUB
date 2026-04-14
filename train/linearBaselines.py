@@ -96,10 +96,7 @@ Usage:
     python linearBaselines.py --crop maize --country NL --model_type xlinear --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily
 
 # Quick test run (5 epochs)
-    python linearBaselines.py --crop wheat --country IN --model_type dlinear --epochs 5 --aggregation daily --test_years 5 --aggregation daily --results_dir checkpoints-test/results
-
-# Train final model only (no CV, using fixed epochs from prior analysis)
-    python linearBaselines.py --crop maize --country NL --model_type nlinear --final_only --final_fixed_epochs 23 --lag_years 2
+    python linearBaselines.py --crop wheat --country NL --model_type olinear --epochs 5 --aggregation daily --test_years 5 --lag_years 0 --aggregation daily --results_dir checkpoints-test/results --save_checkpoint_dir checkpoints-test/results --wandb_project test-and-delete-later
 
 --------------------
 Hyperparameters:
@@ -181,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument('--crop', default="maize")
     parser.add_argument('--country', default="NL")
     parser.add_argument('--model_type', default="nlinear",
-                        choices=['nlinear', 'dlinear', 'xlinear', 'rlinear'])
+                        choices=['nlinear', 'dlinear', 'xlinear', 'rlinear', 'olinear'])
     parser.add_argument('--aggregation', default="dekad",
                         choices=['daily', 'weekly', 'dekad'])
     parser.add_argument('--use_sota_features', action='store_true')
