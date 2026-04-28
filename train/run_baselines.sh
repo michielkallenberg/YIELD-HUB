@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=cybench
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH -p gpu_a100
 #SBATCH -n 1
 #SBATCH --gpus=1
@@ -147,8 +147,11 @@ echo "  Crops: ${crops[@]}"
 echo "  Maize countries with >=$MIN_YEARS years: ${!MAIZE_COUNTRIES[@]}"
 echo "  Wheat countries with >=$MIN_YEARS years: ${!WHEAT_COUNTRIES[@]}"
 
-hf_models=("autoformer" "informer" "patchtst" "tsmixer" "tst" "itransformer" "timexer", "tsmixer")
-linear_models=("nlinear" "dlinear" "xlinear" "rlinear", "olinear")
+# hf_models=("autoformer" "informer" "patchtst" "tsmixer" "tst" "itransformer" "timexer")
+# linear_models=("nlinear" "dlinear" "xlinear" "rlinear" "olinear")
+
+hf_models=("timexer" "timesnet")
+linear_models=("rlinear")
 
 # -----------------------------
 # Concurrency control
@@ -377,7 +380,6 @@ for crop in "${crops[@]}"; do
             --batch_size 64
             --include_spatial_features
             --use_cwb_feature
-            --wandb_project AAAI2027-CYP
             --save_checkpoint_dir modelCheckpoints/yield-trend-cybench/$country/$crop/
             --results_dir "$tmp_dir"
         )

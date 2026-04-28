@@ -735,10 +735,13 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
 
         # Log directly to wandb (self.log() is not allowed in on_fit_start)
         if self.logger and hasattr(self.logger, 'experiment'):
-            self.logger.experiment.log({
-                'model_size_mb': model_size_mb,
-                'total_params': total_params
-            })
+            # Only log if the logger supports direct logging (e.g., WandBLogger)
+            # CSVLogger and other loggers don't support this
+            if hasattr(self.logger.experiment, 'log') and callable(getattr(self.logger.experiment, 'log')):
+                self.logger.experiment.log({
+                    'model_size_mb': model_size_mb,
+                    'total_params': total_params
+                })
 
 # =========================================================
 # LINEAR BASELINE MODELS
@@ -1154,11 +1157,6 @@ class XLinearYieldModel(BaseTimeSeriesModel):
     shift across locations and years.
     """
 
-    HIDDEN_SIZE = 64
-    TEMPORAL_FF = 128
-    CHANNEL_FF = 16
-    DROPOUT = 0.1
-
     def _build_model(self) -> nn.Module:
         # Standardize sequence length calculation for fair comparison with transformers
         lags_sequence = [1] if self.config.lag_years > 0 else [0]
@@ -1167,17 +1165,17 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         )
 
         n_exo = self.n_ts_features
-        hidden = self.HIDDEN_SIZE
-        t_ff = self.TEMPORAL_FF
-        c_ff = self.CHANNEL_FF
-        drop = self.DROPOUT
+        hidden = self.config.xlinear_hidden_size
+        t_ff = self.config.xlinear_temporal_ff
+        c_ff = self.config.xlinear_channel_ff
+        drop = self.config.xlinear_dropout
 
         logging.info(
             f"[XLinear BUILD] seq_len={self.config.seq_len}, "
             f"effective_seq_len={effective_seq_len}, "
             f"n_exo_channels={n_exo}, "
             f"n_static={self.n_static_features}, hidden={hidden}, "
-            f"temporal_ff={t_ff}, channel_ff={c_ff}"
+            f"temporal_ff={t_ff}, channel_ff={c_ff}, dropout={drop}"
         )
 
         # Store effective sequence length for forward pass
@@ -1312,12 +1310,12 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         h_endo = self.endo_embed(x_endo)
 
         # Initialize global token
-        G = self.global_token.expand(B, 1, self.HIDDEN_SIZE)
+        G = self.global_token.expand(B, 1, self.config.xlinear_hidden_size)
 
         # Embed exogenous channels
         x_exo_reshaped = x_ts.permute(0, 2, 1).reshape(B * C, T, 1)
         h_exo_flat = self.exo_embed(x_exo_reshaped)
-        h_exo = h_exo_flat.reshape(B, C, T, self.HIDDEN_SIZE)
+        h_exo = h_exo_flat.reshape(B, C, T, self.config.xlinear_hidden_size)
 
         # Apply TGM to endogenous embeddings
         h_tgm = self.tgm(h_endo)
@@ -1334,15 +1332,15 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         G = G + tgm_mean
 
         # VGM: G × each exo channel
-        G_expanded = G.expand(B, T, self.HIDDEN_SIZE)
+        G_expanded = G.expand(B, T, self.config.xlinear_hidden_size)
         h_exo_t = h_exo.permute(0, 2, 1, 3)
-        G_for_vgm = G_expanded.unsqueeze(2).expand(B, T, C, self.HIDDEN_SIZE)
+        G_for_vgm = G_expanded.unsqueeze(2).expand(B, T, C, self.config.xlinear_hidden_size)
 
         vgm_input = torch.cat([G_for_vgm, h_exo_t], dim=-1)
-        vgm_flat = vgm_input.reshape(B * T * C, 2 * self.HIDDEN_SIZE)
+        vgm_flat = vgm_input.reshape(B * T * C, 2 * self.config.xlinear_hidden_size)
         h_vgm_flat = self.vgm(vgm_flat)
         h_vgm_flat = self.vgm_proj(h_vgm_flat)
-        h_vgm = h_vgm_flat.reshape(B, T, C, self.HIDDEN_SIZE)
+        h_vgm = h_vgm_flat.reshape(B, T, C, self.config.xlinear_hidden_size)
 
         # Pool and predict
         if observed_mask is not None:
@@ -1357,7 +1355,7 @@ class XLinearYieldModel(BaseTimeSeriesModel):
             endo_pooled = h_tgm.mean(dim=1)
             exo_pooled = h_vgm.mean(dim=1)
 
-        exo_pooled_flat = exo_pooled.reshape(B, C * self.HIDDEN_SIZE)
+        exo_pooled_flat = exo_pooled.reshape(B, C * self.config.xlinear_hidden_size)
 
         combined = torch.cat([
             endo_pooled,

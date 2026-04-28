@@ -58,6 +58,12 @@ class TSTModelConfig:
     results_dir: str = "checkpoints/results"
     # Optional learning rate scheduler (lambda function for epoch-based decay)
     lr_scheduler_lambda: Optional[Callable] = None
+    # PatchTST-specific hyperparameters (only used when model_type='patchtst')
+    patchtst_d_model: int = 64
+    patchtst_num_attention_heads: int = 4
+    patchtst_ffn_dim: int = 256
+    patchtst_num_layers: int = 3
+    patchtst_dropout: float = 0.1
 
     @property
     def seq_len(self):
@@ -141,6 +147,11 @@ class LinearModelConfig:
     results_dir: str = "checkpoints/results"
     # Optional learning rate scheduler (lambda function for epoch-based decay)
     lr_scheduler_lambda: Optional[Callable] = None
+    # XLinear-specific hyperparameters (only used when model_type='xlinear')
+    xlinear_hidden_size: int = 64
+    xlinear_temporal_ff: int = 128
+    xlinear_channel_ff: int = 16
+    xlinear_dropout: float = 0.1
 
     @property
     def seq_len(self):

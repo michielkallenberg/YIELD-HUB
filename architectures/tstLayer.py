@@ -1080,11 +1080,14 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
 
         # Log directly to wandb (self.log() is not allowed in on_fit_start)
         if self.logger and hasattr(self.logger, 'experiment'):
-            self.logger.experiment.log({
-                'model_size_mb': model_size_mb,
-                'total_params': total_params
-            })
-            print("DEBUG: Logged to wandb successfully")
+            # Only log if the logger supports direct logging (e.g., WandBLogger)
+            # CSVLogger and other loggers don't support this
+            if hasattr(self.logger.experiment, 'log') and callable(getattr(self.logger.experiment, 'log')):
+                self.logger.experiment.log({
+                    'model_size_mb': model_size_mb,
+                    'total_params': total_params
+                })
+                print("DEBUG: Logged to logger successfully")
 
 
 # =========================================================
@@ -1232,6 +1235,10 @@ class PatchTSTModel(BaseTimeSeriesModel):
                         f"context_length={context_length}, n_ts_features={self.n_ts_features}, "
                         f"n_static_features={self.n_static_features}, "
                         f"patch_length={patch_len}, stride={stride}, aggregation={self.config.aggregation}")
+            logging.info(f"[PatchTST BUILD] Hyperparameters: d_model={self.config.patchtst_d_model}, "
+                        f"num_attention_heads={self.config.patchtst_num_attention_heads}, "
+                        f"ffn_dim={self.config.patchtst_ffn_dim}, num_layers={self.config.patchtst_num_layers}, "
+                        f"dropout={self.config.patchtst_dropout}")
 
             cfg = PatchTSTConfig(
                 prediction_length=1,
@@ -1241,8 +1248,11 @@ class PatchTSTModel(BaseTimeSeriesModel):
                 num_input_channels=self.n_ts_features,
                 num_time_features=0,  # Standardized: all models use 0
                 # NOT using num_static_real_features - we'll concatenate later
-                d_model=64, num_attention_heads=4, ffn_dim=256, num_layers=3,
-                dropout=0.1,
+                d_model=self.config.patchtst_d_model,
+                num_attention_heads=self.config.patchtst_num_attention_heads,
+                ffn_dim=self.config.patchtst_ffn_dim,
+                num_layers=self.config.patchtst_num_layers,
+                dropout=self.config.patchtst_dropout,
                 patch_length=patch_len,
                 stride=stride,
             )
