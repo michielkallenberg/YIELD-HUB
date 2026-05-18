@@ -11,7 +11,7 @@ import lightning.pytorch as pl
 
 from torchmetrics import R2Score, MeanSquaredError, MeanAbsoluteError, MeanAbsolutePercentageError
 
-from cybench.config import (
+from cybench_compat import (
     GDD_BASE_TEMP, GDD_UPPER_LIMIT, LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES

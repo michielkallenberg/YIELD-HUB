@@ -60,7 +60,7 @@ from timeSeriesFM import TrendModel, ModelMetrics
 # Import cybench utilities
 from cybench.datasets.configured import load_dfs_crop
 from cybench.datasets.dataset import Dataset as CYDataset
-from cybench.config import (
+from cybench_compat import (
     KEY_LOC, KEY_YEAR, KEY_TARGET,
     SOIL_PROPERTIES, LOCATION_PROPERTIES, CROP_CALENDAR_DATES,
 )

@@ -118,7 +118,7 @@ Predictions are written to `wrappers/data/` by default.
 # Packaging
 
 This repository now includes a minimal `pyproject.toml` for editable installs and
-wrapper tooling:
+package structure for wrapper tooling and future dashboard/backend work:
 
 ```
 pip install -e .
@@ -128,3 +128,11 @@ yield-hub-predict --model-type patchtst --country DE --crop maize
 Note: `cybench` still comes from the external `AgML-CY-BENCH` codebase and is not
 published on PyPI, so that prerequisite remains separate for now. Point
 `CYBENCH_ROOT` at the `AgML-CY-BENCH` repository root.
+
+The package is organized around:
+
+- `yield_hub.settings`: environment loading and CY-BENCH path resolution
+- `yield_hub.artifacts`: Hugging Face artifact lookup and downloads
+- `yield_hub.data`: CY-BENCH dataset loading and split setup
+- `yield_hub.predictor`: importable prediction API for apps and dashboards
+- `yield_hub.cli`: command-line entrypoint

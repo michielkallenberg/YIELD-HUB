@@ -106,7 +106,7 @@ dependencies:
       - h11==0.16.0
       - h5netcdf==1.6.2
       - h5py==3.14.0
-      - huggingface-hub==0.33.0
+      - huggingface-hub==0.34.4
       - httpcore==1.0.9
       - httpx==0.28.1
       - idna==3.10

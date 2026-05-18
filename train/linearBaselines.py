@@ -149,7 +149,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, Learning
 # CY-BENCH Dependencies
 from cybench.datasets.configured import load_dfs_crop
 from cybench.datasets.dataset import Dataset as CYDataset
-from cybench.config import (
+from cybench_compat import (
     LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
