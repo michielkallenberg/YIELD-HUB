@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yield-hub"
+version = "0.1.0"
+description = "Crop yield benchmarking, artifact access, and prediction wrappers for CY-BENCH."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [
+  { name = "Ambrosia2024" }
+]
+dependencies = [
+  "huggingface-hub==0.33.0",
+  "lightning==2.5.4",
+  "matplotlib==3.10.1",
+  "numpy==1.26.4",
+  "optuna==4.4.0",
+  "pandas==2.2.3",
+  "pymannkendall==1.4.3",
+  "scikit-learn==1.5.2",
+  "torch==2.5.1",
+  "torchmetrics==1.8.1",
+  "tqdm==4.67.1",
+]
+
+[project.scripts]
+yield-hub-predict = "wrappers.generate_predictions:main"
+
+[tool.setuptools]
+packages = ["wrappers"]

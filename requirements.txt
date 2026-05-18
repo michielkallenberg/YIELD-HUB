@@ -1,0 +1,14 @@
+# Core runtime dependencies for packaging, wrappers, and dashboard work.
+# Keep this file focused on direct application dependencies.
+
+huggingface-hub==0.33.0
+lightning==2.5.4
+matplotlib==3.10.1
+numpy==1.26.4
+optuna==4.4.0
+pandas==2.2.3
+pymannkendall==1.4.3
+scikit-learn==1.5.2
+torch==2.5.1
+torchmetrics==1.8.1
+tqdm==4.67.1

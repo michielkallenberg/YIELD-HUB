@@ -96,3 +96,35 @@ AgML-CY-BENCH/
 |   └──  (other folders and files from CY-BENCH)
 └── (other files from CY-BENCH)
 ```
+
+# Private Hugging Face Access
+
+For private model repositories, create a token with read access to the `Ambrosia2024` organization repos and store it in `.env`:
+
+```
+HF_TOKEN=your_token_here
+HUGGINGFACE_HUB_TOKEN=your_token_here
+CYBENCH_ROOT=/absolute/path/to/AgML-CY-BENCH
+```
+
+The repository includes a scriptable wrapper that downloads `config-and-results.csv` and model checkpoints from Hugging Face using that token:
+
+```
+python wrappers/generate_predictions.py --model-type patchtst --country DE --crop maize
+```
+
+Predictions are written to `wrappers/data/` by default.
+
+# Packaging
+
+This repository now includes a minimal `pyproject.toml` for editable installs and
+wrapper tooling:
+
+```
+pip install -e .
+yield-hub-predict --model-type patchtst --country DE --crop maize
+```
+
+Note: `cybench` still comes from the external `AgML-CY-BENCH` codebase and is not
+published on PyPI, so that prerequisite remains separate for now. Point
+`CYBENCH_ROOT` at the `AgML-CY-BENCH` repository root.
