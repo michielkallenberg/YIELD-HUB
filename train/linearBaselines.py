@@ -784,7 +784,7 @@ if __name__ == "__main__":
     # The per-year metrics are now computed during trainer.test() in on_test_epoch_end()
     print(f"\n[CSV Results] Retrieving per-year metrics from test results...")
 
-    # NOTE: trainer.test() modifies model_final in-place when loading checkpoint weights.
+    # trainer.test() modifies model_final in-place when loading checkpoint weights.
     # _test_results_per_year is set during on_test_epoch_end() which runs during trainer.test(),
     # so it is available on model_final after trainer.test() returns.
     if hasattr(model_final, '_test_results_per_year') and model_final._test_results_per_year:
