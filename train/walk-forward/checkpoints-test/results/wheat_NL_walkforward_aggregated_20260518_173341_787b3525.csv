@@ -1,6 +1,0 @@
-test_year,mse_mean,mse_std,mae_mean,mae_std,rmse_mean,rmse_std,r2_mean,r2_std,mape_mean,mape_std,smape_mean,smape_std,nrmse_mean,nrmse_std,run_id,crop,country,model_type,aggregation
-2016,,,,,,,,,,,,,,,787b3525,wheat,NL,informer,daily
-2017,,,,,,,,,,,,,,,787b3525,wheat,NL,informer,daily
-2018,,,,,,,,,,,,,,,787b3525,wheat,NL,informer,daily
-2019,,,,,,,,,,,,,,,787b3525,wheat,NL,informer,daily
-2020,,,,,,,,,,,,,,,787b3525,wheat,NL,informer,daily
