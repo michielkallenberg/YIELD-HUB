@@ -183,9 +183,9 @@ Current validation rules:
   - `soil.bulk_density >= 0`
   - `crop_calendar.sos` and `crop_calendar.eos` in `1..366`
   - `crop_calendar.eos >= crop_calendar.sos`
-  - `fpar.fpar` in `0..1`
+  - `fpar.fpar` in `0..100`, with `0..1` treated as the preferred normalized scale
   - `ndvi.ndvi` in `-1..1`
-  - `soil_moisture.ssm` in `0..1`
+  - `soil_moisture.ssm` in `0..100`, with `0..1` treated as the preferred normalized scale
   - `location.latitude` in `-90..90`
   - `location.longitude` in `-180..180`
 - temporal files are checked for year overlap with the detected yield years
@@ -276,6 +276,8 @@ yield-hub-predict predict --model-type rlinear --crop maize --country NL --data-
   Rename or add the required columns listed in the validation report.
 - `invalid_dates` is non-zero
   Normalize the `date` column to a parseable format such as `YYYYMMDD` or ISO date strings.
+- `warnings` contains scale messages for `fpar` or `ssm`
+  The file is accepted, but the values are not on the preferred normalized `0..1` scale.
 - `duplicate_key_rows` is non-zero
   Deduplicate the file on the reported logical key before inference.
 - `year_overlap_with_yield` is empty

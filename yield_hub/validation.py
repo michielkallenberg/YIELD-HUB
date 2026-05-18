@@ -66,9 +66,9 @@ NUMERIC_RULES = {
         "eos": {"min": 1.0, "max": 366.0},
     },
     "meteo": {},
-    "fpar": {"fpar": {"min": 0.0, "max": 1.0}},
+    "fpar": {"fpar": {"min": 0.0, "max": 100.0, "preferred_max": 1.0}},
     "ndvi": {"ndvi": {"min": -1.0, "max": 1.0}},
-    "soil_moisture": {"ssm": {"min": 0.0, "max": 1.0}},
+    "soil_moisture": {"ssm": {"min": 0.0, "max": 100.0, "preferred_max": 1.0}},
     "location": {
         "latitude": {"min": -90.0, "max": 90.0},
         "longitude": {"min": -180.0, "max": 180.0},
@@ -97,16 +97,25 @@ def _validate_numeric_column(series: pd.Series, rule: Dict) -> Dict:
     invalid_non_numeric = int(numeric.isna().sum() - series.isna().sum())
     invalid_below_min = 0
     invalid_above_max = 0
+    scale_warning = None
 
     if "min" in rule:
         invalid_below_min = int((numeric < rule["min"]).fillna(False).sum())
     if "max" in rule:
         invalid_above_max = int((numeric > rule["max"]).fillna(False).sum())
+    if "preferred_max" in rule and invalid_non_numeric == 0:
+        observed_max = numeric.max(skipna=True)
+        if pd.notna(observed_max) and observed_max > rule["preferred_max"]:
+            scale_warning = (
+                f"values exceed preferred normalized max {rule['preferred_max']} "
+                f"but remain within accepted max {rule['max']}"
+            )
 
     return {
         "non_numeric": invalid_non_numeric,
         "below_min": invalid_below_min,
         "above_max": invalid_above_max,
+        "scale_warning": scale_warning,
         "ok": invalid_non_numeric == 0 and invalid_below_min == 0 and invalid_above_max == 0,
     }
 
@@ -126,6 +135,7 @@ def _validate_file(key: str, path: Path, crop: str, country: str) -> Dict:
         "detected_years": [],
         "missing_harvest_years": [],
         "numeric_checks": {},
+        "warnings": [],
         "ok": True,
     }
 
@@ -179,6 +189,8 @@ def _validate_file(key: str, path: Path, crop: str, country: str) -> Dict:
             continue
         check = _validate_numeric_column(df[column], rule)
         file_info["numeric_checks"][column] = check
+        if check["scale_warning"]:
+            file_info["warnings"].append(f"{column}: {check['scale_warning']}")
         if not check["ok"]:
             file_info["ok"] = False
 
