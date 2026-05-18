@@ -76,5 +76,5 @@ sbatch run_baselines.sh
 
 # Model Checkpoints
 
-All the trained checkpoints are available at [Hugging Face](https://huggingface.co/Ambrosia2024/Yield-Hub) repository.
+All the trained checkpoints are available under the [Ambrosia2024/yield-hub](https://huggingface.co/collections/Ambrosia2024/yield-hub) collection on Hugging Face. Individual model repositories include [yield-autoformer-cybench](https://huggingface.co/Ambrosia2024/yield-autoformer-cybench) and the bundled `yield-transformers-cybench` and `yield-linear-cybench` repos referenced by `wrappers/generate_predictions.ipynb`.
 
