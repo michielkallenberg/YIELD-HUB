@@ -54,6 +54,7 @@ AgML-CY-BENCH/
 │   ├── train/           (from YIELD-HUB)
 │   ├── process/         (from YIELD-HUB)
 │   ├── architectures/   (from YIELD-HUB)
+│   ├── wrappers/   (from YIELD-HUB)
 |   ├── environment.yml  (from YIELD-HUB
 |   └──  (other folders and files from CY-BENCH)
 └── (other files from CY-BENCH)
@@ -74,7 +75,24 @@ cd train/
 sbatch run_baselines.sh
 ```
 
-# Model Checkpoints
+# Model Checkpoints (Currently a private repository)
 
 All the trained checkpoints are available under the [Ambrosia2024/yield-hub](https://huggingface.co/collections/Ambrosia2024/yield-hub) collection on Hugging Face. Individual model repositories include [yield-autoformer-cybench](https://huggingface.co/Ambrosia2024/yield-autoformer-cybench) and the bundled `yield-transformers-cybench` and `yield-linear-cybench` repos referenced by `wrappers/generate_predictions.ipynb`.
 
+# Wrappers
+Download these models and place them under the cybench repository under a folder named HFcheckpoints (as shown below) for using the wrappers:
+```
+AgML-CY-BENCH/
+├── cybench/
+│   ├── data/
+│   │   ├── maize/
+│   │   └── wheat/
+│   ├── train/           (from YIELD-HUB)
+│   ├── HFcheckpoints/           (from YIELD-HUB)
+│   ├── process/         (from YIELD-HUB)
+│   ├── architectures/   (from YIELD-HUB)
+│   ├── wrappers/   (from YIELD-HUB)
+|   ├── environment.yml  (from YIELD-HUB
+|   └──  (other folders and files from CY-BENCH)
+└── (other files from CY-BENCH)
+```
