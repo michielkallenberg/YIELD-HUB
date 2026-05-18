@@ -1,6 +1,5 @@
-import logging
-import os
 import sys
+import logging
 from typing import Union
 
 import numpy as np
@@ -14,7 +13,8 @@ import lightning.pytorch as pl
 
 from cybench.datasets.configured import load_dfs_crop
 from cybench.datasets.dataset import Dataset as CYDataset
-from cybench_compat import (
+from cybench.config import (LOCATION_PROPERTIES, SOIL_PROPERTIES, CROP_CALENDAR_DATES)
+from cybench.config import (
     LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
@@ -44,9 +44,9 @@ SOTA_TEMPORAL_VARS_LIST = [
     'season_sin', 'season_cos'
 ]
 
-if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
-    print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
-    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+# based on config.weather_features and config.time_series_vars properties
+print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
+print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 
 def prepare_features_and_targets(dataset):
@@ -196,9 +196,12 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
 
         # Always recompute normalization for the current split
         # Prevents stale params from a previous setup() call leaking into a new split
-        self.feature_norm_params = None
-        self.y_mean = None
-        self.y_std = None
+        # EXCEPT if we're setting up for testing only (no train years), in which case
+        # we reuse existing normalization stats
+        if train_years is not None and len(train_years) > 0:
+            self.feature_norm_params = None
+            self.y_mean = None
+            self.y_std = None
 
         print(f"\n[DataModule] {cfg.crop}-{cfg.country} | {cfg.aggregation.upper()} | "
               f"Spatial={cfg.include_spatial_features} | Lag={cfg.lag_years}")
@@ -295,14 +298,24 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
         train_idx, val_idx, test_idx = idx(train_yrs), idx(val_yrs), idx(test_yrs)
 
         # Normalise targets using training statistics only (no leakage)
-        self.y_mean = float(np.mean(self.all_y[train_idx]))
-        self.y_std = float(np.std(self.all_y[train_idx])) or 1.0
+        # If train_idx is empty (e.g., testing only), reuse existing stats if available
+        if len(train_idx) > 0:
+            self.y_mean = float(np.mean(self.all_y[train_idx]))
+            self.y_std = float(np.std(self.all_y[train_idx])) or 1.0
+        elif self.y_mean is None or self.y_std is None:
+            # No training data and no existing stats - this is an error case
+            raise ValueError("Cannot compute normalization: no training data available")
+        # If train_idx is empty but we have existing stats, reuse them (for testing only)
         print(f"  Y norm: mean={self.y_mean:.4f}, std={self.y_std:.4f}")
 
-        self.feature_norm_params = self._compute_feature_normalization(
-            self.all_X_ts[train_idx], self.all_X_static[train_idx],
-            self.all_masks[train_idx] if self.all_masks is not None else None
-        )
+        # Compute or reuse feature normalization
+        if len(train_idx) > 0:
+            self.feature_norm_params = self._compute_feature_normalization(
+                self.all_X_ts[train_idx], self.all_X_static[train_idx],
+                self.all_masks[train_idx] if self.all_masks is not None else None
+            )
+        elif self.feature_norm_params is None:
+            raise ValueError("Cannot compute feature normalization: no training data available")
         print(f"  Feature norm params: {len(self.feature_norm_params)} features")
 
         all_y_norm = (self.all_y - self.y_mean) / self.y_std
@@ -420,7 +433,20 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
         """
         return DataLoader(self.test_ds, batch_size=self.config.batch_size,
                           shuffle=False, num_workers=self.config.num_workers)
-    
+
+    def copy_normalization_from(self, other_dm):
+        """Copy normalization statistics from another datamodule.
+
+        Useful when creating a test datamodule that should use the same
+        normalization as the training datamodule.
+
+        Args:
+            other_dm: Another DailyCYBenchSeqDataModule with computed stats
+        """
+        self.y_mean = other_dm.y_mean
+        self.y_std = other_dm.y_std
+        self.feature_norm_params = other_dm.feature_norm_params
+
 
 def calculate_fixed_split(
     all_years: List[int],
@@ -457,3 +483,38 @@ def calculate_fixed_split(
         'can_split': True,
         'skip_reason': None
     }
+
+def generate_walk_forward_splits(all_years, test_years):
+    """
+    Generate walk-forward (expanding window) splits.
+
+    Train on all years except last N, then walk forward one year at a time.
+
+    Example: years=[2000-2020], test_years=5
+    - Fold 0: train=2000-2015, test=2016
+    - Fold 1: train=2000-2016, test=2017
+    - Fold 2: train=2000-2017, test=2018
+    - Fold 3: train=2000-2018, test=2019
+    - Fold 4: train=2000-2019, test=2020
+
+    Args:
+        all_years: List of all available years
+        test_years: Number of years to walk forward (N)
+
+    Returns:
+        List of dicts with train_years, test_years, fold_idx
+    """
+    splits = []
+    initial_train_cutoff = len(all_years) - test_years
+
+    for i in range(test_years):
+        train_years = all_years[:initial_train_cutoff + i]
+        test_year = all_years[initial_train_cutoff + i]
+
+        splits.append({
+            'train_years': train_years,
+            'test_years': [test_year],
+            'fold_idx': i
+        })
+
+    return splits

@@ -2,7 +2,7 @@
 """
 --------------------
 Author: XYZ
-Description: A linear architecture based crop yield prediction framework that combines state-of-the-art time architectures with agricultural domain knowledge. 
+Description: A linear architecture based crop yield prediction framework that combines state-of-the-art time architectures with agricultural domain knowledge.
 Python version: 3.12.0
 --------------------
 Architecture overview: This script implements unified linear baseline architectures that serve as
@@ -89,7 +89,7 @@ Output generated:
 
 --------------
 Usage:
-# Basic training with NLinear 
+# Basic training with NLinear
     python linearBaselines.py --crop maize --country NL --model_type nlinear --epochs 50 --aggregation daily
 
 # Use all SOTA features (Fourier encoding + residual trend + recursive lags)
@@ -97,9 +97,6 @@ Usage:
 
 # Quick test run (5 epochs)
     python linearBaselines.py --crop wheat --country NL --model_type olinear --epochs 5 --aggregation daily --test_years 5 --lag_years 0 --aggregation daily --results_dir checkpoints-test/results --save_checkpoint_dir checkpoints-test/results --wandb_project test-and-delete-later
-
-# Find HPO
-    python linearBaselines.py --crop maize --country NL --model_type patchtst --find_HPO --n_trials 2 --epochs 3 --hpo_objective multi --hpo_results_file checkpoints-test/results/HPO/octuna_file.txt --hpo_study_name test-and-delete-later
 
 --------------------
 Hyperparameters:
@@ -109,7 +106,7 @@ Hyperparameters:
     --lag_years:       Historical yield lags (1 or 2, default: 1)
     --aggregation:     Temporal resolution (daily/weekly/dekad, default: dekad)
     --seed:            Random seed for reproducibility (default: 42)
-    --use_revIN:       Enable RevIN normalization for XLinear (default: False)
+    --use_revin:       Enable RevIN normalization for XLinear (default: False)
 
 
 ------------
@@ -135,7 +132,6 @@ from typing import Optional, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
-import optuna
 
 # Configure module-level logger BEFORE any imports that might use it
 logger = logging.getLogger(__name__)
@@ -149,19 +145,19 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, Learning
 # CY-BENCH Dependencies
 from cybench.datasets.configured import load_dfs_crop
 from cybench.datasets.dataset import Dataset as CYDataset
-from cybench_compat import (
+from cybench.config import (
     LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
 )
 
 # Loading custom functions and classes
-sys.path.append('../process/')
+sys.path.append('../../process/')
 from helpers import generate_checkpoint_name, save_test_results_to_csv
 from validateModel import print_metrics_table
 from loadData import calculate_fixed_split, DailyCYBenchSeqDataModule
 
-sys.path.append('../architectures/')
+sys.path.append('../../architectures/')
 from modelconfig import LinearModelConfig
 from linearLayer import create_model
 
@@ -229,7 +225,7 @@ if __name__ == "__main__":
                         help='Include crop water balance (cwb) as a feature')
     parser.add_argument('--drop_tavg', action='store_true',
                         help='Drop tavg feature')
-    parser.add_argument('--use_revIN', action='store_true',
+    parser.add_argument('--use_revin', action='store_true',
                         help='Use RevIN normalization for XLinear endogenous series')
     parser.add_argument('--lr_decay_every', type=int, default=None,
                         help='Decay learning rate by half every N epochs (default: None, no decay)')
@@ -246,20 +242,6 @@ if __name__ == "__main__":
                         help='XLinear: feed-forward dimension in the Variate-wise Gating Module (default: 16)')
     parser.add_argument('--xlinear_dropout', type=float, default=0.1,
                         help='XLinear: dropout probability for regularization (default: 0.1)')
-    # Optuna HPO arguments
-    parser.add_argument('--find_HPO', action='store_true',
-                        help='Enable Optuna hyperparameter optimization')
-    parser.add_argument('--n_trials', type=int, default=50,
-                        help='Number of Optuna trials (default: 50)')
-    parser.add_argument('--hpo_storage', type=str, default=None,
-                        help='Optuna storage URL for distributed optimization (e.g., sqlite:///optuna.db)')
-    parser.add_argument('--hpo_study_name', type=str, default=None,
-                        help='Optuna study name (default: auto-generated)')
-    parser.add_argument('--hpo_results_file', type=str, default=None,
-                        help='Path to save HPO results text file (default: auto-generated in results_dir)')
-    parser.add_argument('--hpo_objective', type=str, default='nrmse',
-                        choices=['nrmse', 'r2', 'multi'],
-                        help='Optimization objective: nrmse (minimize), r2 (maximize), or multi (both)')
     args = parser.parse_args()
 
     # Dynamically set num_workers if not specified
@@ -282,7 +264,7 @@ if __name__ == "__main__":
     print(f"CY-BENCH  |  {args.model_type.upper()}  |  {args.crop}-{args.country}  "
           f"|  {args.aggregation.upper()}")
     print(f"  SOTA={args.use_sota_features}  Spatial={args.include_spatial_features}  "
-          f"Lag={args.lag_years}  RevIN={args.use_revIN}")
+          f"Lag={args.lag_years}  RevIN={args.use_revin}")
     print(f"  RecursiveLags={args.use_recursive_lags}  ResidualTrend={args.use_residual_trend}")
     print(f"  Domain features: GDD={args.use_gdd}  HeatStress={args.use_heat_stress_days}  "
           f"RUE={args.use_rue}  Farquhar={args.use_farquhar}")
@@ -318,7 +300,7 @@ if __name__ == "__main__":
         use_farquhar=args.use_farquhar,
         use_cwb_feature=args.use_cwb_feature,
         drop_tavg=args.drop_tavg,
-        use_revIN=args.use_revIN,
+        use_revin=args.use_revin,
         results_dir=args.results_dir,
         lr_scheduler_lambda=lr_scheduler_lambda,
         xlinear_hidden_size=args.xlinear_hidden_size,
@@ -368,344 +350,9 @@ if __name__ == "__main__":
     print(f"  Val years ({len(fixed_splits['val_years'])}): {sorted(fixed_splits['val_years'])}")
     print(f"  Test years ({len(fixed_splits['test_years'])}): {sorted(fixed_splits['test_years'])}")
 
-    # ==================== OPTUNA HPO INTEGRATION ====================
-    if args.find_HPO:
-        print(f"\n{'=' * 70}")
-        print(f"OPTUNA HYPERPARAMETER OPTIMIZATION")
-        print(f"{'=' * 70}\n")
-
-        # Auto-generate HPO results file path if not provided
-        if args.hpo_results_file is None:
-            hpo_results_dir = os.path.join(args.results_dir, "HPO")
-            os.makedirs(hpo_results_dir, exist_ok=True)
-            hpo_results_file = os.path.join(hpo_results_dir,
-                f"{args.model_type}_{args.crop}_{args.country}_HPO_results_{timestamp}.txt")
-        else:
-            hpo_results_file = args.hpo_results_file
-            # Create directory if it doesn't exist
-            hpo_results_dir = os.path.dirname(hpo_results_file)
-            if hpo_results_dir:  # Only create if there's a directory component
-                os.makedirs(hpo_results_dir, exist_ok=True)
-
-        # Auto-generate study name if not provided
-        if args.hpo_study_name is None:
-            study_name = f"{args.model_type}_{args.crop}_{args.country}_{args.aggregation}"
-        else:
-            study_name = args.hpo_study_name
-
-        print(f"[HPO Config]")
-        print(f"  Objective: {args.hpo_objective}")
-        print(f"  Trials: {args.n_trials}")
-        print(f"  Study name: {study_name}")
-        print(f"  Results file: {hpo_results_file}")
-        print(f"  Storage: {args.hpo_storage if args.hpo_storage else 'In-memory'}")
-
-        def optuna_objective(trial):
-            """Optuna objective function for hyperparameter optimization"""
-
-            # Suggest hyperparameters based on model type
-            if args.model_type == 'xlinear':
-                xlinear_hidden_size = trial.suggest_categorical('xlinear_hidden_size', [32, 64, 128, 256])
-                xlinear_temporal_ff = trial.suggest_categorical('xlinear_temporal_ff', [64, 128, 256, 512])
-                xlinear_channel_ff = trial.suggest_categorical('xlinear_channel_ff', [8, 16, 32, 64])
-                xlinear_dropout = trial.suggest_float('xlinear_dropout', 0.0, 0.5)
-
-                # Shared hyperparameters
-                batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
-                lr = trial.suggest_float('lr', 5e-5, 5e-4, log=True)
-                weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-4, log=True)
-
-                # Create config with suggested parameters
-                hpo_config = LinearModelConfig(
-                    crop=args.crop, country=args.country,
-                    model_type=args.model_type, aggregation=args.aggregation,
-                    use_sota_features=args.use_sota_features,
-                    include_spatial_features=args.include_spatial_features,
-                    lag_years=args.lag_years,
-                    load_checkpoint=None,  # Never load checkpoint during HPO
-                    seed=args.seed, batch_size=batch_size,
-                    num_workers=args.num_workers,
-                    max_epochs=args.epochs, lr=lr, weight_decay=weight_decay,
-                    test_years=args.test_years,
-                    use_residual_trend=args.use_residual_trend,
-                    use_recursive_lags=args.use_recursive_lags,
-                    use_gdd=args.use_gdd,
-                    use_heat_stress_days=args.use_heat_stress_days,
-                    use_rue=args.use_rue,
-                    use_farquhar=args.use_farquhar,
-                    use_cwb_feature=args.use_cwb_feature,
-                    drop_tavg=args.drop_tavg,
-                    use_revIN=args.use_revIN,
-                    results_dir=args.results_dir,
-                    lr_scheduler_lambda=lr_scheduler_lambda,
-                    xlinear_hidden_size=xlinear_hidden_size,
-                    xlinear_temporal_ff=xlinear_temporal_ff,
-                    xlinear_channel_ff=xlinear_channel_ff,
-                    xlinear_dropout=xlinear_dropout,
-                )
-            else:
-                # For other linear models, only tune shared hyperparameters
-                batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
-                lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)
-                weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-4, log=True)
-
-                hpo_config = LinearModelConfig(
-                    crop=args.crop, country=args.country,
-                    model_type=args.model_type, aggregation=args.aggregation,
-                    use_sota_features=args.use_sota_features,
-                    include_spatial_features=args.include_spatial_features,
-                    lag_years=args.lag_years,
-                    load_checkpoint=None,
-                    seed=args.seed, batch_size=batch_size,
-                    num_workers=args.num_workers,
-                    max_epochs=args.epochs, lr=lr, weight_decay=weight_decay,
-                    test_years=args.test_years,
-                    use_residual_trend=args.use_residual_trend,
-                    use_recursive_lags=args.use_recursive_lags,
-                    use_gdd=args.use_gdd,
-                    use_heat_stress_days=args.use_heat_stress_days,
-                    use_rue=args.use_rue,
-                    use_farquhar=args.use_farquhar,
-                    use_cwb_feature=args.use_cwb_feature,
-                    drop_tavg=args.drop_tavg,
-                    use_revIN=args.use_revIN,
-                    results_dir=args.results_dir,
-                    lr_scheduler_lambda=lr_scheduler_lambda,
-                    xlinear_hidden_size=args.xlinear_hidden_size,
-                    xlinear_temporal_ff=args.xlinear_temporal_ff,
-                    xlinear_channel_ff=args.xlinear_channel_ff,
-                    xlinear_dropout=args.xlinear_dropout,
-                )
-
-            # Create datamodule
-            dm = DailyCYBenchSeqDataModule(hpo_config)
-            dm.setup(
-                train_years=fixed_splits['train_years'],
-                val_years=fixed_splits['val_years'],
-                test_years=fixed_splits['test_years']
-            )
-
-            # Create model
-            model = create_model(hpo_config)
-
-            # Setup callbacks for HPO (faster training)
-            hpo_callbacks = [
-                EarlyStopping(monitor='val_loss', patience=5, mode='min', verbose=False),
-                LearningRateMonitor(logging_interval='epoch'),
-            ]
-
-            # CSV logger for each trial
-            trial_logger = CSVLogger("logs/", name=f"cybench-hpo-{trial.number}")
-
-            # Create trainer
-            trainer = Trainer(
-                max_epochs=hpo_config.max_epochs,
-                accelerator="gpu" if torch.cuda.is_available() else "cpu",
-                devices=1,
-                callbacks=hpo_callbacks,
-                logger=[trial_logger],
-                log_every_n_steps=50,
-                enable_progress_bar=False,
-                enable_model_summary=False,
-                enable_checkpointing=False,
-            )
-
-            # Train
-            print(f"\n[Trial {trial.number}] Training with hyperparameters...")
-            try:
-                trainer.fit(model, dm)
-
-                # Get validation metrics
-                val_metrics = trainer.validate(model, dm)
-                if val_metrics:
-                    val_results = val_metrics[0]
-
-                    # Handle different objectives
-                    if args.hpo_objective == 'nrmse':
-                        return val_results.get('val/nrmse', float('inf'))
-                    elif args.hpo_objective == 'r2':
-                        return val_results.get('val/r2', -float('inf'))  # Return r2 directly for maximization
-                    elif args.hpo_objective == 'multi':
-                        # Multi-objective: return tuple (nrmse, r2)
-                        nrmse = val_results.get('val/nrmse', float('inf'))
-                        r2 = val_results.get('val/r2', -float('inf'))
-                        return nrmse, r2  # Return r2 directly for maximization
-                else:
-                    if args.hpo_objective == 'multi':
-                        return float('inf'), float('inf')
-                    else:
-                        return float('inf')
-            except Exception as e:
-                print(f"[Trial {trial.number}] Failed: {e}")
-                if args.hpo_objective == 'multi':
-                    return float('inf'), float('inf')
-                else:
-                    return float('inf')
-
-        # Create and run study with pruning
-        pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5, interval_steps=1)
-
-        if args.hpo_objective == 'multi':
-            study = optuna.create_study(
-                study_name=study_name,
-                storage=args.hpo_storage,
-                load_if_exists=True,
-                directions=['minimize', 'maximize'],  # Minimize nrmse, maximize r2
-                pruner=pruner
-            )
-        elif args.hpo_objective == 'r2':
-            study = optuna.create_study(
-                study_name=study_name,
-                storage=args.hpo_storage,
-                load_if_exists=True,
-                direction='maximize',  # Maximize r2
-                pruner=pruner
-            )
-        else:  # nrmse
-            study = optuna.create_study(
-                study_name=study_name,
-                storage=args.hpo_storage,
-                load_if_exists=True,
-                direction='minimize',  # Minimize nrmse
-                pruner=pruner
-            )
-
-        print(f"\n{'=' * 70}")
-        print(f"Starting Optuna optimization with {args.n_trials} trials...")
-        print(f"{'=' * 70}\n")
-
-        # Enqueue default baseline configuration for comparison
-        if args.model_type == 'xlinear':
-            baseline_params = {
-                'xlinear_hidden_size': 64,
-                'xlinear_temporal_ff': 128,
-                'xlinear_channel_ff': 16,
-                'xlinear_dropout': 0.1,
-                'batch_size': 16,
-                'lr': 1e-4,
-                'weight_decay': 1e-5,
-            }
-            study.enqueue_trial(baseline_params)
-            print(f"[HPO] Enqueued baseline configuration: {baseline_params}")
-
-        study.optimize(optuna_objective, n_trials=args.n_trials, show_progress_bar=True)
-
-        # Print and save results
-        print(f"\n{'=' * 70}")
-        print(f"HPO COMPLETED")
-        print(f"{'=' * 70}\n")
-
-        if args.hpo_objective == 'multi':
-            print("Best trials (multi-objective):")
-            # Find best trials for each objective
-            best_nrmse_trial = min(study.best_trials, key=lambda t: t.values[0])
-            best_r2_trial = max(study.best_trials, key=lambda t: t.values[1])
-
-            print(f"\nBest NRMSE (Trial {best_nrmse_trial.number}):")
-            print(f"  NRMSE: {best_nrmse_trial.values[0]:.4f}")
-            print(f"  R²: {best_nrmse_trial.values[1]:.4f}")
-            print(f"  Params: {best_nrmse_trial.params}")
-
-            print(f"\nBest R² (Trial {best_r2_trial.number}):")
-            print(f"  NRMSE: {best_r2_trial.values[0]:.4f}")
-            print(f"  R²: {best_r2_trial.values[1]:.4f}")
-            print(f"  Params: {best_r2_trial.params}")
-        else:
-            print(f"Best trial (Trial {study.best_trial.number}):")
-            print(f"  Value: {study.best_value:.4f}")
-            print(f"  Params: {study.best_params}")
-
-        # Save results to text file
-        with open(hpo_results_file, 'w') as f:
-            f.write("=" * 70 + "\n")
-            f.write(f"OPTUNA HPO RESULTS - {args.model_type.upper()} | {args.crop}-{args.country}\n")
-            f.write("=" * 70 + "\n\n")
-            f.write(f"Study Name: {study_name}\n")
-            f.write(f"Objective: {args.hpo_objective}\n")
-            f.write(f"Total Trials: {len(study.trials)}\n")
-            f.write(f"Timestamp: {timestamp}\n\n")
-
-            if args.hpo_objective == 'multi':
-                f.write("BEST TRIALS (Multi-Objective):\n")
-                f.write("-" * 70 + "\n")
-
-                best_nrmse_trial = min(study.best_trials, key=lambda t: t.values[0])
-                f.write(f"\nBest NRMSE (Trial {best_nrmse_trial.number}):\n")
-                f.write(f"  NRMSE: {best_nrmse_trial.values[0]:.6f}\n")
-                f.write(f"  R²: {best_nrmse_trial.values[1]:.6f}\n")
-                f.write(f"  Hyperparameters:\n")
-                for param, value in best_nrmse_trial.params.items():
-                    f.write(f"    {param}: {value}\n")
-
-                best_r2_trial = max(study.best_trials, key=lambda t: t.values[1])
-                f.write(f"\nBest R² (Trial {best_r2_trial.number}):\n")
-                f.write(f"  NRMSE: {best_r2_trial.values[0]:.6f}\n")
-                f.write(f"  R²: {best_r2_trial.values[1]:.6f}\n")
-                f.write(f"  Hyperparameters:\n")
-                for param, value in best_r2_trial.params.items():
-                    f.write(f"    {param}: {value}\n")
-            else:
-                f.write("BEST TRIAL:\n")
-                f.write("-" * 70 + "\n")
-                f.write(f"Trial Number: {study.best_trial.number}\n")
-                f.write(f"Objective Value: {study.best_value:.6f}\n")
-                f.write(f"Hyperparameters:\n")
-                for param, value in study.best_params.items():
-                    f.write(f"    {param}: {value}\n")
-
-            f.write("\n" + "=" * 70 + "\n")
-            f.write("ALL TRIALS\n")
-            f.write("=" * 70 + "\n\n")
-
-            for trial in study.trials:
-                if trial.state == optuna.trial.TrialState.COMPLETE:
-                    if args.hpo_objective == 'multi':
-                        f.write(f"Trial {trial.number}: NRMSE={trial.values[0]:.6f}, R²={trial.values[1]:.6f}\n")
-                    else:
-                        f.write(f"Trial {trial.number}: Value={trial.value:.6f}\n")
-                    f.write(f"  Params: {trial.params}\n\n")
-
-        print(f"\n[HPO] Results saved to: {hpo_results_file}")
-
-        # Save best hyperparameters to CSV files
-        if args.hpo_objective == 'multi':
-            # Create CSV files in the save_checkpoint_dir
-            csv_rmse_path = os.path.join(args.save_checkpoint_dir, 'optuna_rmse.csv')
-            csv_r2_path = os.path.join(args.save_checkpoint_dir, 'optuna_r2.csv')
-
-            # Get best trials for each metric
-            best_rmse_trial = min(study.best_trials, key=lambda t: t.values[0])
-            best_r2_trial = max(study.best_trials, key=lambda t: t.values[1])
-
-            # Save RMSE-optimized hyperparameters
-            with open(csv_rmse_path, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['hyperparameter', 'value'])
-                for param, value in best_rmse_trial.params.items():
-                    writer.writerow([param, value])
-                writer.writerow(['nrmse', best_rmse_trial.values[0]])
-                writer.writerow(['r2', best_rmse_trial.values[1]])
-
-            # Save R²-optimized hyperparameters
-            with open(csv_r2_path, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['hyperparameter', 'value'])
-                for param, value in best_r2_trial.params.items():
-                    writer.writerow([param, value])
-                writer.writerow(['nrmse', best_r2_trial.values[0]])
-                writer.writerow(['r2', best_r2_trial.values[1]])
-
-            print(f"[HPO] Best RMSE hyperparameters saved to: {csv_rmse_path}")
-            print(f"[HPO] Best R² hyperparameters saved to: {csv_r2_path}")
-
-        # Skip regular training when in HPO mode
-        print(f"\n[HPO] Hyperparameter optimization complete. Exiting.")
-        sys.exit(0)
-
-    # ==================== REGULAR TRAINING (no HPO) ====================
-    # PHASE 3: Final Model Training and Evaluation
+    # ==================== FIXED SPLIT TRAINING (default) ====================
     print(f"\n{'=' * 70}")
-    print(f"PHASE 3: Final Model Training and Evaluation")
+    print(f"PHASE 3: Final Model Training and Evaluation (Fixed Split)")
     print(f"{'=' * 70}\n")
 
     # Create datamodule for final model
@@ -784,7 +431,7 @@ if __name__ == "__main__":
     # The per-year metrics are now computed during trainer.test() in on_test_epoch_end()
     print(f"\n[CSV Results] Retrieving per-year metrics from test results...")
 
-    # trainer.test() modifies model_final in-place when loading checkpoint weights.
+    # NOTE: trainer.test() modifies model_final in-place when loading checkpoint weights.
     # _test_results_per_year is set during on_test_epoch_end() which runs during trainer.test(),
     # so it is available on model_final after trainer.test() returns.
     if hasattr(model_final, '_test_results_per_year') and model_final._test_results_per_year:

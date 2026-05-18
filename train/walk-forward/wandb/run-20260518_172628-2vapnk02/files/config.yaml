@@ -1,0 +1,236 @@
+_wandb:
+    value:
+        cli_version: 0.22.3
+        e:
+            jickdexk2odcaic5pj9u7wyw510sjo5n:
+                args:
+                    - --crop
+                    - wheat
+                    - --country
+                    - NL
+                    - --model_type
+                    - informer
+                    - --epochs
+                    - "3"
+                    - --aggregation
+                    - daily
+                    - --lag_years
+                    - "0"
+                    - --test_years
+                    - "5"
+                    - --results_dir
+                    - checkpoints-test/results
+                    - --save_checkpoint_dir
+                    - checkpoints-test/results
+                    - --save_checkpoint_dir
+                    - checkpoints-test/results
+                    - --wandb_project
+                    - test-and-delete-later
+                codePath: cybench/train/walk-forward/tstBaselines.py
+                codePathLocal: tstBaselines.py
+                cpu_count: 72
+                cpu_count_logical: 72
+                cudaVersion: "13.2"
+                disk:
+                    /:
+                        total: "270181466112"
+                        used: "3966836736"
+                email: vageeshsaxena@gmail.com
+                executable: /home/vsaxena1/miniconda3/envs/cybench/bin/python
+                git:
+                    commit: 4ced69d9619920bef9768fdc605f2e9468eddbce
+                    remote: https://github.com/WUR-AI/AgML-CY-Bench.git
+                gpu: NVIDIA A100-SXM4-40GB
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "42949672960"
+                      name: NVIDIA A100-SXM4-40GB
+                      uuid: GPU-e2d38dd9-eceb-acf5-6635-58d603c3c163
+                host: gcn12.local.snellius.surf.nl
+                memory:
+                    total: "540626898944"
+                os: Linux-5.14.0-570.114.1.sshkeysignpwn.el9.x86_64-x86_64-with-glibc2.34
+                program: /gpfs/home4/vsaxena1/AgML-CY-Bench/cybench/train/walk-forward/tstBaselines.py
+                python: CPython 3.12.0
+                root: .
+                slurm:
+                    cluster_name: snellius
+                    conf: /var/spool/slurm/slurmd/conf-cache/slurm.conf
+                    cpus_on_node: "18"
+                    eclibr: "0"
+                    ecplug: "1"
+                    erlast: srun
+                    ersbac: "1"
+                    ersrun: "1"
+                    export_env: ALL
+                    gpus: "1"
+                    gpus_on_node: "1"
+                    gtids: "0"
+                    job_account: umsei15858
+                    job_cpus_per_node: "18"
+                    job_end_time: "1779118050"
+                    job_gid: "74874"
+                    job_gpus: "0"
+                    job_group: vsaxena1
+                    job_id: "22857407"
+                    job_name: interactive
+                    job_nodelist: gcn12
+                    job_num_nodes: "1"
+                    job_partition: gpu_a100
+                    job_qos: normal
+                    job_start_time: "1779116249"
+                    job_uid: "75414"
+                    job_user: vsaxena1
+                    jobid: "22857407"
+                    launch_node_ipaddr: 172.18.63.192
+                    localid: "0"
+                    mpi_type: pmi2
+                    nnodes: "1"
+                    nodeid: "0"
+                    nodelist: gcn12
+                    oom_kill_step: "0"
+                    pmi2_proc_mapping: (vector,(0,1,1))
+                    pmi2_srun_port: "40487"
+                    pmi2_step_nodes: gcn12
+                    prio_process: "0"
+                    procid: "0"
+                    pty_port: "37827"
+                    pty_win_col: "201"
+                    pty_win_row: "62"
+                    script_context: prolog_task
+                    srun_comm_host: 172.18.63.192
+                    srun_comm_port: "37185"
+                    step_gres: gres/cpu:0
+                    step_id: "4294967290"
+                    step_launcher_port: "37185"
+                    step_nodelist: gcn12
+                    step_num_nodes: "1"
+                    step_num_tasks: "1"
+                    step_tasks_per_node: "1"
+                    stepid: "4294967290"
+                    submit_dir: /gpfs/home4/vsaxena1/AgML-CY-Bench/cybench/train
+                    submit_host: int6.local.snellius.surf.nl
+                    task_pid: "2931255"
+                    tasks_per_node: "18"
+                    topology_addr: root.ibsw6.gcn12
+                    topology_addr_pattern: switch.switch.node
+                startedAt: "2026-05-18T15:26:28.519363Z"
+                writerId: jickdexk2odcaic5pj9u7wyw510sjo5n
+        m:
+            - "1": trainer/global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.12.0
+        t:
+            "1":
+                - 1
+                - 5
+                - 11
+                - 41
+                - 49
+                - 53
+                - 71
+                - 105
+                - 106
+            "2":
+                - 1
+                - 5
+                - 11
+                - 41
+                - 49
+                - 53
+                - 71
+                - 105
+                - 106
+            "3":
+                - 7
+                - 13
+                - 16
+                - 66
+            "4": 3.12.0
+            "5": 0.22.3
+            "6": 4.57.5
+            "12": 0.22.3
+            "13": linux-x86_64
+aggregation:
+    value: daily
+batch_size:
+    value: 16
+config:
+    value: TSTModelConfig(crop='wheat', country='NL', model_type='informer', aggregation='daily', use_sota_features=False, include_spatial_features=False, use_residual_trend=False, lag_years=0, load_checkpoint=None, seed=42, batch_size=16, num_workers=8, lr=0.0001, weight_decay=1e-05, max_epochs=100, test_years=1, use_cwb_feature=False, drop_tavg=False, use_recursive_lags=False, use_gdd=False, use_heat_stress_days=False, use_rue=False, use_farquhar=False, use_revin=False, results_dir='checkpoints-test/results', lr_scheduler_lambda=None, patchtst_d_model=64, patchtst_num_attention_heads=4, patchtst_ffn_dim=256, patchtst_num_layers=3, patchtst_dropout=0.1)
+country:
+    value: NL
+crop:
+    value: wheat
+drop_tavg:
+    value: false
+early_stopping_epoch:
+    value: 100
+epochs:
+    value: 3
+es_min_delta:
+    value: 0.0001
+es_patience:
+    value: 5
+include_spatial_features:
+    value: false
+lag_years:
+    value: 0
+load_checkpoint:
+    value: null
+lr:
+    value: 0.0001
+lr_decay_every:
+    value: null
+model_type:
+    value: informer
+num_workers:
+    value: 8
+patchtst_d_model:
+    value: 64
+patchtst_dropout:
+    value: 0.1
+patchtst_ffn_dim:
+    value: 256
+patchtst_num_attention_heads:
+    value: 4
+patchtst_num_layers:
+    value: 3
+results_dir:
+    value: checkpoints-test/results
+save_checkpoint_dir:
+    value: checkpoints-test/results
+seed:
+    value: 42
+test_years:
+    value: 5
+use_cwb_feature:
+    value: false
+use_farquhar:
+    value: false
+use_gdd:
+    value: false
+use_heat_stress_days:
+    value: false
+use_recursive_lags:
+    value: false
+use_residual_trend:
+    value: false
+use_rue:
+    value: false
+use_sota_features:
+    value: false
+wandb_project:
+    value: test-and-delete-later
+wandb_run_name:
+    value: null
+weight_decay:
+    value: 1e-05

@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=cybench
-#SBATCH --time=12:00:00
-#SBATCH -p gpu_a100
+#SBATCH --job-name=cybench_hpo_new
+#SBATCH --time=48:00:00
+#SBATCH -p gpu_h100
 #SBATCH -n 1
 #SBATCH --gpus=1
 #SBATCH --mail-type=END,FAIL
@@ -16,15 +16,10 @@ export CUDA_VISIBLE_DEVICES=0
 echo "Running on node: $(hostname)"
 echo "Start time: $(date)"
 
-# ==================== CONFIGURATION ====================
-# Minimum number of years required for training
 MIN_YEARS=8
-
-# Countries to exclude (already trained)
 EXCLUDED_COUNTRIES=""
-# =======================================================
 
-# Embed the years_info.txt dictionary directly
+YEARS_DICT=$(cat <<'EOF'
 YEARS_DICT=$(cat <<'EOF'
 {
 'maize':
@@ -103,21 +98,6 @@ YEARS_DICT=$(cat <<'EOF'
 EOF
 )
 
-# Dynamically extract crops and filtered countries
-crops=($(python3 -c "
-import ast
-import sys
-
-data = ast.literal_eval('''$YEARS_DICT''')
-MIN_YEARS = $MIN_YEARS
-EXCLUDED = '$EXCLUDED_COUNTRIES'.split()
-
-# Get all crops
-for crop in data.keys():
-    print(crop)
-"))
-
-# Get countries for each crop with >= MIN_YEARS
 declare -A MAIZE_COUNTRIES
 declare -A WHEAT_COUNTRIES
 
@@ -143,83 +123,57 @@ for crop in data.keys():
 echo "Configuration:"
 echo "  MIN_YEARS: $MIN_YEARS"
 echo "  EXCLUDED_COUNTRIES: $EXCLUDED_COUNTRIES"
-echo "  Crops: ${crops[@]}"
-echo "  Maize countries with >=$MIN_YEARS years: ${!MAIZE_COUNTRIES[@]}"
-echo "  Wheat countries with >=$MIN_YEARS years: ${!WHEAT_COUNTRIES[@]}"
+echo "  Maize countries with >=$MIN_YEARS years: $(echo ${!MAIZE_COUNTRIES[@]} | tr ' ' '\n' | sort | tr '\n' ' ')"
+echo "  Wheat countries with >=$MIN_YEARS years: $(echo ${!WHEAT_COUNTRIES[@]} | tr ' ' '\n' | sort | tr '\n' ' ')"
 
-# hf_models=("autoformer" "informer" "patchtst" "tsmixer" "tst" "itransformer" "timexer")
-# linear_models=("nlinear" "dlinear" "xlinear" "rlinear" "olinear")
 
-hf_models=("timexer" "timesnet")
-linear_models=("rlinear")
+MAX_PARALLEL=4
 
-# -----------------------------
-# Concurrency control
-# Tune MAX_PARALLEL based on GPU
-# memory. Safe default is 2.
-# HF transformers: try 2-3
-# Linear models: try 4-6
-# -----------------------------
-MAX_PARALLEL=3
-
-# Create semaphore pipe
 PIPE=$(mktemp -u)
 mkfifo "$PIPE"
 exec 3<>"$PIPE"
 rm "$PIPE"
 
-# Fill pipe with tokens
 for i in $(seq 1 $MAX_PARALLEL); do
     echo >&3
 done
 
-mkdir -p modelCheckpoints/results log
+mkdir -p modelCheckpoints/results modelCheckpoints/hpo log
 
-# -----------------------------
-# run_model: acquires a token,
-# launches process, releases
-# token when done
-# -----------------------------
+# Acquires a token, launches process, releases token when done
 run_model() {
     local log_file=$1
     shift
     local cmd=("$@")
 
-    # Acquire token (blocks if MAX_PARALLEL already running)
     read -u 3
 
     {
         "${cmd[@]}" > "$log_file" 2>&1
-        # Release token when process finishes
         echo >&3
     } &
 }
 
-# -----------------------------
-# Merge helper
-# -----------------------------
-merge_results() {
-    echo "Merging results..."
-    for metric in nrmse mape r2 rmse mae mse smape; do
-        final_csv="modelCheckpoints/results/${metric}.csv"
-        first=1
-        for tmp_dir in modelCheckpoints/results/tmp_*/; do
-            src="${tmp_dir}${metric}.csv"
-            if [ -f "$src" ]; then
-                if [ $first -eq 1 ]; then
-                    cp "$src" "$final_csv"
-                    first=0
-                else
-                    tail -n +2 "$src" >> "$final_csv"
-                fi
+
+is_completed() {
+    local model=$1
+    local country=$2
+    local crop=$3
+    local results_dir="modelCheckpoints/results/hpo_${model}_${country}_${crop}/HPO"
+
+    # Check if HPO directory exists and has any .txt files with "Trial 99: Value="
+    if [ -d "$results_dir" ]; then
+        # Look for any .txt file in the HPO directory that contains "Trial 99: Value="
+        for file in "$results_dir"/*.txt; do
+            if [ -f "$file" ] && grep -q "Trial 99: Value=" "$file" 2>/dev/null; then
+                return 0  # Completed - Trial 99 found
             fi
         done
-        echo "Merged $metric.csv"
-    done
-    rm -rf modelCheckpoints/results/tmp_*/
+    fi
+
+    return 1  # Not completed - no Trial 99 found
 }
 
-# Function to get countries for a crop
 get_countries_for_crop() {
     local crop=$1
     if [ "$crop" = "maize" ]; then
@@ -229,173 +183,115 @@ get_countries_for_crop() {
     fi
 }
 
-# Sort countries alphabetically for consistent ordering
 sort_countries() {
     echo $1 | tr ' ' '\n' | sort | tr '\n' ' '
 }
 
-# -----------------------------
-# NEW: Check if result file exists and is non-empty
-# -----------------------------
-is_completed() {
-    local result_file="modelCheckpoints/results/${1}_${2}_${3}.txt"
-    if [ -f "$result_file" ] && [ -s "$result_file" ]; then
-        return 0  # Completed
-    else
-        return 1  # Not completed
-    fi
-}
+crops=("wheat" "maize")
 
-# -----------------------------
-# HF models
-# -----------------------------
+# HPO: patchtst
 echo "--------------------------------------"
-echo "Running HF models"
-echo "--------------------------------------"
-
-# Uncomment one at a time to experiment:
-# cmd+=(--use_sota_features)
-# cmd+=(--use_residual_trend)
-# cmd+=(--use_recursive_lags)
-# cmd+=(--use_gdd)
-# cmd+=(--use_heat_stress_days)
-# cmd+=(--use_rue)
-# cmd+=(--use_farquhar)
-# cmd+= (--include_spatial_features)
-
-for crop in "${crops[@]}"; do
-   countries=$(sort_countries "$(get_countries_for_crop $crop)")
-   for country in $countries; do
-       for model in "${hf_models[@]}"; do
-           # Check if already completed
-           if is_completed "$model" "$country" "$crop"; then
-               echo "Skipping $model $country $crop (already completed)"
-               continue
-           fi
-
-           tmp_dir="modelCheckpoints/results/tmp_${model}_${country}_${crop}"
-           mkdir -p "$tmp_dir"
-
-           echo "Starting $model $country $crop"
-
-           cmd=(
-               python tstBaselines.py
-               --crop $crop
-               --country $country
-               --model_type $model
-               --aggregation daily
-               --batch_size 64
-               --epochs 50
-               --lag_years 0
-               --use_cwb_feature
-               --test_years 5
-               --save_checkpoint_dir modelCheckpoints/yield-$model-cybench/$country/$crop/
-               --wandb_project AAAI2027-CYP
-               --results_dir "$tmp_dir"
-           )
-
-           run_model \
-               "modelCheckpoints/results/${model}_${country}_${crop}.txt" \
-               "${cmd[@]}"
-
-       done
-   done
-done
-
-# -----------------------------
-# Linear models
-# -----------------------------
-# echo "--------------------------------------"
-# echo "Running Linear models"
-# echo "--------------------------------------"
-
-for crop in "${crops[@]}"; do
-   countries=$(sort_countries "$(get_countries_for_crop $crop)")
-   for country in $countries; do
-       for model in "${linear_models[@]}"; do
-           # Check if already completed
-           if is_completed "$model" "$country" "$crop"; then
-               echo "Skipping $model $country $crop (already completed)"
-               continue
-           fi
-
-           tmp_dir="modelCheckpoints/results/tmp_${model}_${country}_${crop}"
-           mkdir -p "$tmp_dir"
-
-           echo "Starting $model $country $crop"
-
-          cmd=(
-               python linearBaselines.py
-               --crop $crop
-               --country $country
-               --model_type $model
-               --aggregation daily
-               --batch_size 64
-               --epochs 50
-               --lag_years 0
-               --test_years 5
-               --use_cwb_feature
-               --wandb_project AAAI2027-CYP
-               --save_checkpoint_dir modelCheckpoints/yield-$model-cybench/$country/$crop/
-               --results_dir "$tmp_dir"
-           )
-
-           run_model \
-               "modelCheckpoints/results/${model}_${country}_${crop}.txt" \
-               "${cmd[@]}"
-
-       done
-   done
-done
-
-# -----------------------------
-# Trend model
-# -----------------------------
-echo "--------------------------------------"
-echo "Running Trend model"
+echo "Running HPO for patchtst (HF)"
 echo "--------------------------------------"
 
 for crop in "${crops[@]}"; do
     countries=$(sort_countries "$(get_countries_for_crop $crop)")
     for country in $countries; do
-        # Check if already completed
-        if is_completed "trend" "$country" "$crop"; then
-            echo "Skipping trend $country $crop (already completed)"
+
+        if is_completed "patchtst" "$country" "$crop"; then
+            echo "Skipping patchtst $country $crop (already completed)"
             continue
         fi
 
-        tmp_dir="modelCheckpoints/results/tmp_trend_${country}_${crop}"
-        mkdir -p "$tmp_dir"
+        results_dir="modelCheckpoints/results/hpo_patchtst_${country}_${crop}"
+        echo "Starting HPO: patchtst $country $crop"
 
-        echo "Starting trend $country $crop"
+        # Crop-specific feature flags
+        local patchtst_flags=()
+        if [ "$crop" = "wheat" ]; then
+            patchtst_flags=(--use_gdd --use_rue --use_farquhar --use_sota_features)
+        elif [ "$crop" = "maize" ]; then
+            patchtst_flags=(--use_sota_features)
+        fi
 
         cmd=(
-            python trendBaseline.py
-            --crop $crop
-            --country $country
-            --epochs 50
+            python tstBaselines.py
+            --crop "$crop"
+            --country "$country"
+            --model_type patchtst
             --aggregation daily
-            --test_years 5
-            --lag_years 2
-            --batch_size 64
-            --include_spatial_features
+            --epochs 50
+            --lag_years 0
             --use_cwb_feature
-            --save_checkpoint_dir modelCheckpoints/yield-trend-cybench/$country/$crop/
-            --results_dir "$tmp_dir"
+            --test_years 5
+            "${patchtst_flags[@]}"
+            --find_HPO
+            --n_trials 50
+            --hpo_objective nrmse
+            --hpo_study_name "AAAI2027-HPO"
+            --wandb_project AAAI2027-HPO
+            --save_checkpoint_dir "modelCheckpoints/yield-patchtst-hpo/$country/$crop/"
+            --results_dir "$results_dir"
         )
 
         run_model \
-            "modelCheckpoints/results/trend_${country}_${crop}.txt" \
+            "modelCheckpoints/hpo/hpo_patchtst_${country}_${crop}.txt" \
             "${cmd[@]}"
 
     done
 done
 
-# Wait for all remaining jobs
+# HPO: Xlinear
+echo "--------------------------------------"
+echo "Running HPO for xlinear (Linear)"
+echo "--------------------------------------"
+
+for crop in "${crops[@]}"; do
+    countries=$(sort_countries "$(get_countries_for_crop $crop)")
+    for country in $countries; do
+
+        if is_completed "xlinear" "$country" "$crop"; then
+            echo "Skipping xlinear $country $crop (already completed)"
+            continue
+        fi
+
+        results_dir="modelCheckpoints/results/hpo_xlinear_${country}_${crop}"
+        echo "Starting HPO: xlinear $country $crop"
+
+        # Crop-specific feature flags (same for wheat and maize)
+        local xlinear_flags=(
+            --use_gdd --use_rue --use_farquhar --use_sota_features
+            --include_spatial_features --use_heat_stress_days
+            --lag_years 2 --use_revIN
+        )
+
+        cmd=(
+            python linearBaselines.py
+            --crop "$crop"
+            --country "$country"
+            --model_type xlinear
+            --aggregation daily
+            --epochs 50
+            --use_cwb_feature
+            --test_years 5
+            "${xlinear_flags[@]}"
+            --find_HPO
+            --n_trials 50
+            --hpo_objective nrmse
+            --hpo_study_name "AAAI2027-HPO"
+            --wandb_project AAAI2027-HPO
+            --save_checkpoint_dir "modelCheckpoints/yield-xlinear-hpo/$country/$crop/"
+            --results_dir "$results_dir"
+        )
+
+        run_model \
+            "modelCheckpoints/hpo/hpo_xlinear_${country}_${crop}.txt" \
+            "${cmd[@]}"
+
+    done
+done
+
 wait
 
-# Merge all CSVs into final files
-merge_results
-
 echo "End time: $(date)"
-echo "All jobs finished."
+echo "All HPO jobs finished."

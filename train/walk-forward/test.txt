@@ -1,0 +1,794 @@
+[Feature Config] Static vars (4): ['awc', 'bulk_density', 'latitude', 'longitude']
+[Feature Config] SOTA Temporal vars (6): ['sin_doy', 'cos_doy', 'sin_month', 'cos_month', 'season_sin', 'season_cos']
+[Feature Config] Static vars (4): ['awc', 'bulk_density', 'latitude', 'longitude']
+[Feature Config] SOTA Temporal vars (6): ['sin_doy', 'cos_doy', 'sin_month', 'cos_month', 'season_sin', 'season_cos']
+[Feature Config] SOTA Temporal vars (6): ['sin_doy', 'cos_doy', 'sin_month', 'cos_month', 'season_sin', 'season_cos']
+[Auto-config] Setting num_workers=8 based on 72 CPU cores
+
+======================================================================
+CY-BENCH WALK-FORWARD  |  INFORMER  |  wheat-NL  |  DAILY
+  SOTA=False  Spatial=False  Lag=0
+  Domain features: GDD=False  HeatStress=False  RUE=False  Farquhar=False
+  TestYears=5
+  lr=0.0001  wd=1e-05  epochs=3  batch=16  seed=42
+======================================================================
+
+[Feature Config] Weather features: ['tmin', 'tmax', 'tavg', 'prec', 'rad']
+[Feature Config] Total time series vars (9): ['tmin', 'tmax', 'tavg', 'prec', 'rad', 'fpar', 'ndvi', 'ssm', 'rsm']
+
+[Checkpoint Config]
+  Save directory: checkpoints-test/results
+[Data] Available years: [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]
+[Feature Config] Static vars (4): ['awc', 'bulk_density', 'latitude', 'longitude']
+[Feature Config] SOTA Temporal vars (6): ['sin_doy', 'cos_doy', 'sin_month', 'cos_month', 'season_sin', 'season_cos']
+
+======================================================================
+WALK-FORWARD VALIDATION (Test on All Future Years)
+======================================================================
+
+[Walk-Forward Config]
+  Number of folds: 5
+  Early stopping epoch limit (E): 3
+  Early stopping patience: 5
+  Early stopping min_delta: 0.0001
+
+[Walk-Forward Splits]
+  Fold 0: train_years=12 (2004-2015)
+  Fold 1: train_years=13 (2004-2016)
+  Fold 2: train_years=14 (2004-2017)
+  Fold 3: train_years=15 (2004-2018)
+  Fold 4: train_years=16 (2004-2019)
+
+======================================================================
+FOLD 1/5
+======================================================================
+  Train years: [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015]
+  Train end year: 2015
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015], Val [], Test []
+  Years Summary:
+    Train years (12): [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015]
+    Val years (0):   []
+    Test years (0):  []
+  Y norm: mean=8.2706, std=0.9745
+  Feature norm params: 18 features
+  Samples: train=144, val=0, test=0
+[Model] TS features=9, Static features=9
+
+[Fold 0] Training...
+
+============================================================
+DEBUG: on_fit_start() called - counting model parameters...
+============================================================
+DEBUG: Model type: InformerModel
+DEBUG: Has base_model: True
+DEBUG: Has regression_head: True
+DEBUG: base_model type: InformerModel
+DEBUG: base_model parameters: 180,928
+DEBUG: regression_head parameters: 2,773
+DEBUG: Number of parameter groups: 102
+DEBUG: Total parameters counted: 183,701
+DEBUG: Parameter size (bytes): 734,804
+DEBUG: Buffer size (bytes): 520
+============================================================
+MODEL SIZE: 0.70 MB
+Total parameters: 183,701
+============================================================
+
+DEBUG: Logged to logger successfully
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]                                                  Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/9 [00:00<?, ?it/s]Epoch 0:  11%|█         | 1/9 [00:00<00:01,  4.30it/s]Epoch 0:  11%|█         | 1/9 [00:00<00:01,  4.27it/s, v_num=pp5y, train_loss=2.110]Epoch 0:  22%|██▏       | 2/9 [00:00<00:00,  7.56it/s, v_num=pp5y, train_loss=2.110]Epoch 0:  22%|██▏       | 2/9 [00:00<00:00,  7.54it/s, v_num=pp5y, train_loss=1.020]Epoch 0:  33%|███▎      | 3/9 [00:00<00:00, 10.52it/s, v_num=pp5y, train_loss=1.020]Epoch 0:  33%|███▎      | 3/9 [00:00<00:00, 10.50it/s, v_num=pp5y, train_loss=0.929]Epoch 0:  44%|████▍     | 4/9 [00:00<00:00, 13.10it/s, v_num=pp5y, train_loss=0.929]Epoch 0:  44%|████▍     | 4/9 [00:00<00:00, 13.08it/s, v_num=pp5y, train_loss=0.837]Epoch 0:  56%|█████▌    | 5/9 [00:00<00:00, 15.74it/s, v_num=pp5y, train_loss=0.837]Epoch 0:  56%|█████▌    | 5/9 [00:00<00:00, 15.71it/s, v_num=pp5y, train_loss=1.080]Epoch 0:  67%|██████▋   | 6/9 [00:00<00:00, 17.46it/s, v_num=pp5y, train_loss=1.080]Epoch 0:  67%|██████▋   | 6/9 [00:00<00:00, 17.44it/s, v_num=pp5y, train_loss=0.788]Epoch 0:  78%|███████▊  | 7/9 [00:00<00:00, 19.25it/s, v_num=pp5y, train_loss=0.788]Epoch 0:  78%|███████▊  | 7/9 [00:00<00:00, 19.23it/s, v_num=pp5y, train_loss=0.795]Epoch 0:  89%|████████▉ | 8/9 [00:00<00:00, 20.84it/s, v_num=pp5y, train_loss=0.795]Epoch 0:  89%|████████▉ | 8/9 [00:00<00:00, 20.82it/s, v_num=pp5y, train_loss=1.450]Epoch 0: 100%|██████████| 9/9 [00:00<00:00, 22.30it/s, v_num=pp5y, train_loss=1.450]Epoch 0: 100%|██████████| 9/9 [00:00<00:00, 22.27it/s, v_num=pp5y, train_loss=0.631]Epoch 0: 100%|██████████| 9/9 [00:00<00:00, 22.21it/s, v_num=pp5y, train_loss=0.631]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   1.0710
+  MAE:   0.8136
+  RMSE:  1.0349
+  R²:    -0.0710
+  MAPE:  1.9380
+  SMAPE: 1.4329
+------------------------------------------------------------
+Epoch 0:   0%|          | 0/9 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.631]        Epoch 1:   0%|          | 0/9 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.631]Epoch 1:  11%|█         | 1/9 [00:00<00:03,  2.17it/s, v_num=pp5y, train_loss=0.631]Epoch 1:  11%|█         | 1/9 [00:00<00:03,  2.16it/s, v_num=pp5y, train_loss=0.838]Epoch 1:  22%|██▏       | 2/9 [00:00<00:01,  4.05it/s, v_num=pp5y, train_loss=0.838]Epoch 1:  22%|██▏       | 2/9 [00:00<00:01,  4.04it/s, v_num=pp5y, train_loss=1.170]Epoch 1:  33%|███▎      | 3/9 [00:00<00:01,  5.91it/s, v_num=pp5y, train_loss=1.170]Epoch 1:  33%|███▎      | 3/9 [00:00<00:01,  5.90it/s, v_num=pp5y, train_loss=1.030]Epoch 1:  44%|████▍     | 4/9 [00:00<00:00,  7.67it/s, v_num=pp5y, train_loss=1.030]Epoch 1:  44%|████▍     | 4/9 [00:00<00:00,  7.66it/s, v_num=pp5y, train_loss=0.816]Epoch 1:  56%|█████▌    | 5/9 [00:00<00:00,  9.22it/s, v_num=pp5y, train_loss=0.816]Epoch 1:  56%|█████▌    | 5/9 [00:00<00:00,  9.21it/s, v_num=pp5y, train_loss=0.395]Epoch 1:  67%|██████▋   | 6/9 [00:00<00:00, 10.57it/s, v_num=pp5y, train_loss=0.395]Epoch 1:  67%|██████▋   | 6/9 [00:00<00:00, 10.56it/s, v_num=pp5y, train_loss=0.585]Epoch 1:  78%|███████▊  | 7/9 [00:00<00:00, 11.90it/s, v_num=pp5y, train_loss=0.585]Epoch 1:  78%|███████▊  | 7/9 [00:00<00:00, 11.89it/s, v_num=pp5y, train_loss=1.140]Epoch 1:  89%|████████▉ | 8/9 [00:00<00:00, 13.10it/s, v_num=pp5y, train_loss=1.140]Epoch 1:  89%|████████▉ | 8/9 [00:00<00:00, 13.09it/s, v_num=pp5y, train_loss=1.300]Epoch 1: 100%|██████████| 9/9 [00:00<00:00, 14.26it/s, v_num=pp5y, train_loss=1.300]Epoch 1: 100%|██████████| 9/9 [00:00<00:00, 14.24it/s, v_num=pp5y, train_loss=0.803]Epoch 1: 100%|██████████| 9/9 [00:00<00:00, 14.22it/s, v_num=pp5y, train_loss=0.803]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.8972
+  MAE:   0.7426
+  RMSE:  0.9472
+  R²:    0.1028
+  MAPE:  1.4679
+  SMAPE: 1.3663
+------------------------------------------------------------
+Epoch 1:   0%|          | 0/9 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.803]        Epoch 2:   0%|          | 0/9 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.803]Epoch 2:  11%|█         | 1/9 [00:00<00:03,  2.40it/s, v_num=pp5y, train_loss=0.803]Epoch 2:  11%|█         | 1/9 [00:00<00:03,  2.40it/s, v_num=pp5y, train_loss=0.793]Epoch 2:  22%|██▏       | 2/9 [00:00<00:01,  4.57it/s, v_num=pp5y, train_loss=0.793]Epoch 2:  22%|██▏       | 2/9 [00:00<00:01,  4.56it/s, v_num=pp5y, train_loss=0.611]Epoch 2:  33%|███▎      | 3/9 [00:00<00:00,  6.53it/s, v_num=pp5y, train_loss=0.611]Epoch 2:  33%|███▎      | 3/9 [00:00<00:00,  6.53it/s, v_num=pp5y, train_loss=0.793]Epoch 2:  44%|████▍     | 4/9 [00:00<00:00,  8.30it/s, v_num=pp5y, train_loss=0.793]Epoch 2:  44%|████▍     | 4/9 [00:00<00:00,  8.29it/s, v_num=pp5y, train_loss=0.653]Epoch 2:  56%|█████▌    | 5/9 [00:00<00:00,  9.84it/s, v_num=pp5y, train_loss=0.653]Epoch 2:  56%|█████▌    | 5/9 [00:00<00:00,  9.83it/s, v_num=pp5y, train_loss=0.957]Epoch 2:  67%|██████▋   | 6/9 [00:00<00:00, 11.34it/s, v_num=pp5y, train_loss=0.957]Epoch 2:  67%|██████▋   | 6/9 [00:00<00:00, 11.33it/s, v_num=pp5y, train_loss=0.974]Epoch 2:  78%|███████▊  | 7/9 [00:00<00:00, 12.69it/s, v_num=pp5y, train_loss=0.974]Epoch 2:  78%|███████▊  | 7/9 [00:00<00:00, 12.68it/s, v_num=pp5y, train_loss=0.261]Epoch 2:  89%|████████▉ | 8/9 [00:00<00:00, 13.99it/s, v_num=pp5y, train_loss=0.261]Epoch 2:  89%|████████▉ | 8/9 [00:00<00:00, 13.98it/s, v_num=pp5y, train_loss=1.020]Epoch 2: 100%|██████████| 9/9 [00:00<00:00, 15.25it/s, v_num=pp5y, train_loss=1.020]Epoch 2: 100%|██████████| 9/9 [00:00<00:00, 15.23it/s, v_num=pp5y, train_loss=0.991]Epoch 2: 100%|██████████| 9/9 [00:00<00:00, 15.20it/s, v_num=pp5y, train_loss=0.991]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.7839
+  MAE:   0.6986
+  RMSE:  0.8854
+  R²:    0.2161
+  MAPE:  1.3205
+  SMAPE: 1.3187
+------------------------------------------------------------
+Epoch 2: 100%|██████████| 9/9 [00:00<00:00, 14.37it/s, v_num=pp5y, train_loss=0.991]
+
+[Fold 0] Testing on 5 future years: [2016, 2017, 2018, 2019, 2020]
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2016]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2016]
+  Y norm: mean=8.2706, std=0.9745
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=3
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 10.20it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   1.0236
+  MAE:   0.8432
+  RMSE:  1.0117
+  R²:    -0.7787
+  MAPE:  0.1196
+  SMAPE: 0.1095
+  NRMSE: 0.1329
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00,  8.76it/s]
+  Year 2016: NRMSE=0.1329, R2=-0.7787
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2017]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2017]
+  Y norm: mean=8.2706, std=0.9745
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 46.18it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.5717
+  MAE:   0.6237
+  RMSE:  0.7561
+  R²:    0.3442
+  MAPE:  0.0737
+  SMAPE: 0.0739
+  NRMSE: 0.0864
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 27.41it/s]
+  Year 2017: NRMSE=0.0864, R2=0.3442
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2018]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2018]
+  Y norm: mean=8.2706, std=0.9745
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 52.07it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.3563
+  MAE:   0.4962
+  RMSE:  0.5969
+  R²:    0.4286
+  MAPE:  0.0611
+  SMAPE: 0.0606
+  NRMSE: 0.0704
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 26.93it/s]
+  Year 2018: NRMSE=0.0704, R2=0.4286
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2019]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2019]
+  Y norm: mean=8.2706, std=0.9745
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 54.86it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   1.1621
+  MAE:   0.9671
+  RMSE:  1.0780
+  R²:    -0.2896
+  MAPE:  0.1018
+  SMAPE: 0.1078
+  NRMSE: 0.1169
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 30.31it/s]
+  Year 2019: NRMSE=0.1169, R2=-0.2896
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2020]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2020]
+  Y norm: mean=8.2706, std=0.9745
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 55.59it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.4003
+  MAE:   0.5393
+  RMSE:  0.6327
+  R²:    0.3159
+  MAPE:  0.0670
+  SMAPE: 0.0659
+  NRMSE: 0.0755
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 30.81it/s]
+  Year 2020: NRMSE=0.0755, R2=0.3159
+
+======================================================================
+FOLD 2/5
+======================================================================
+  Train years: [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016]
+  Train end year: 2016
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016], Val [], Test []
+  Years Summary:
+    Train years (13): [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016]
+    Val years (0):   []
+    Test years (0):  []
+  Y norm: mean=8.2571, std=0.9750
+  Feature norm params: 18 features
+  Samples: train=147, val=0, test=0
+[Model] TS features=9, Static features=9
+
+[Fold 1] Training...
+
+============================================================
+DEBUG: on_fit_start() called - counting model parameters...
+============================================================
+DEBUG: Model type: InformerModel
+DEBUG: Has base_model: True
+DEBUG: Has regression_head: True
+DEBUG: base_model type: InformerModel
+DEBUG: base_model parameters: 180,928
+DEBUG: regression_head parameters: 2,773
+DEBUG: Number of parameter groups: 102
+DEBUG: Total parameters counted: 183,701
+DEBUG: Parameter size (bytes): 734,804
+DEBUG: Buffer size (bytes): 520
+============================================================
+MODEL SIZE: 0.70 MB
+Total parameters: 183,701
+============================================================
+
+DEBUG: Logged to logger successfully
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]                                                  Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/10 [00:00<?, ?it/s]Epoch 0:  10%|█         | 1/10 [00:00<00:00, 23.10it/s]Epoch 0:  10%|█         | 1/10 [00:00<00:00, 22.75it/s, v_num=pp5y, train_loss=0.881]Epoch 0:  20%|██        | 2/10 [00:00<00:00, 31.24it/s, v_num=pp5y, train_loss=0.881]Epoch 0:  20%|██        | 2/10 [00:00<00:00, 30.99it/s, v_num=pp5y, train_loss=1.900]Epoch 0:  30%|███       | 3/10 [00:00<00:00, 37.08it/s, v_num=pp5y, train_loss=1.900]Epoch 0:  30%|███       | 3/10 [00:00<00:00, 36.86it/s, v_num=pp5y, train_loss=0.893]Epoch 0:  40%|████      | 4/10 [00:00<00:00, 40.98it/s, v_num=pp5y, train_loss=0.893]Epoch 0:  40%|████      | 4/10 [00:00<00:00, 40.77it/s, v_num=pp5y, train_loss=1.520]Epoch 0:  50%|█████     | 5/10 [00:00<00:00, 42.56it/s, v_num=pp5y, train_loss=1.520]Epoch 0:  50%|█████     | 5/10 [00:00<00:00, 42.39it/s, v_num=pp5y, train_loss=0.404]Epoch 0:  60%|██████    | 6/10 [00:00<00:00, 44.31it/s, v_num=pp5y, train_loss=0.404]Epoch 0:  60%|██████    | 6/10 [00:00<00:00, 44.17it/s, v_num=pp5y, train_loss=0.311]Epoch 0:  70%|███████   | 7/10 [00:00<00:00, 44.49it/s, v_num=pp5y, train_loss=0.311]Epoch 0:  70%|███████   | 7/10 [00:00<00:00, 44.35it/s, v_num=pp5y, train_loss=1.360]Epoch 0:  80%|████████  | 8/10 [00:00<00:00, 44.21it/s, v_num=pp5y, train_loss=1.360]Epoch 0:  80%|████████  | 8/10 [00:00<00:00, 44.09it/s, v_num=pp5y, train_loss=1.050]Epoch 0:  90%|█████████ | 9/10 [00:00<00:00, 44.85it/s, v_num=pp5y, train_loss=1.050]Epoch 0:  90%|█████████ | 9/10 [00:00<00:00, 44.74it/s, v_num=pp5y, train_loss=0.769]Epoch 0: 100%|██████████| 10/10 [00:00<00:00, 42.99it/s, v_num=pp5y, train_loss=0.769]Epoch 0: 100%|██████████| 10/10 [00:00<00:00, 42.90it/s, v_num=pp5y, train_loss=1.450]Epoch 0: 100%|██████████| 10/10 [00:00<00:00, 42.64it/s, v_num=pp5y, train_loss=1.450]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   1.0194
+  MAE:   0.7375
+  RMSE:  1.0097
+  R²:    -0.0194
+  MAPE:  1.2984
+  SMAPE: 1.2112
+------------------------------------------------------------
+Epoch 0:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.450]         Epoch 1:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.450]Epoch 1:  10%|█         | 1/10 [00:00<00:04,  1.94it/s, v_num=pp5y, train_loss=1.450]Epoch 1:  10%|█         | 1/10 [00:00<00:04,  1.93it/s, v_num=pp5y, train_loss=0.745]Epoch 1:  20%|██        | 2/10 [00:00<00:02,  3.67it/s, v_num=pp5y, train_loss=0.745]Epoch 1:  20%|██        | 2/10 [00:00<00:02,  3.67it/s, v_num=pp5y, train_loss=0.630]Epoch 1:  30%|███       | 3/10 [00:00<00:01,  5.37it/s, v_num=pp5y, train_loss=0.630]Epoch 1:  30%|███       | 3/10 [00:00<00:01,  5.36it/s, v_num=pp5y, train_loss=0.840]Epoch 1:  40%|████      | 4/10 [00:00<00:00,  6.85it/s, v_num=pp5y, train_loss=0.840]Epoch 1:  40%|████      | 4/10 [00:00<00:00,  6.85it/s, v_num=pp5y, train_loss=0.416]Epoch 1:  50%|█████     | 5/10 [00:00<00:00,  8.27it/s, v_num=pp5y, train_loss=0.416]Epoch 1:  50%|█████     | 5/10 [00:00<00:00,  8.26it/s, v_num=pp5y, train_loss=0.779]Epoch 1:  60%|██████    | 6/10 [00:00<00:00,  9.56it/s, v_num=pp5y, train_loss=0.779]Epoch 1:  60%|██████    | 6/10 [00:00<00:00,  9.55it/s, v_num=pp5y, train_loss=0.831]Epoch 1:  70%|███████   | 7/10 [00:00<00:00, 10.76it/s, v_num=pp5y, train_loss=0.831]Epoch 1:  70%|███████   | 7/10 [00:00<00:00, 10.75it/s, v_num=pp5y, train_loss=1.630]Epoch 1:  80%|████████  | 8/10 [00:00<00:00, 11.88it/s, v_num=pp5y, train_loss=1.630]Epoch 1:  80%|████████  | 8/10 [00:00<00:00, 11.87it/s, v_num=pp5y, train_loss=0.934]Epoch 1:  90%|█████████ | 9/10 [00:00<00:00, 12.96it/s, v_num=pp5y, train_loss=0.934]Epoch 1:  90%|█████████ | 9/10 [00:00<00:00, 12.95it/s, v_num=pp5y, train_loss=0.924]Epoch 1: 100%|██████████| 10/10 [00:00<00:00, 13.99it/s, v_num=pp5y, train_loss=0.924]Epoch 1: 100%|██████████| 10/10 [00:00<00:00, 13.98it/s, v_num=pp5y, train_loss=0.284]Epoch 1: 100%|██████████| 10/10 [00:00<00:00, 13.94it/s, v_num=pp5y, train_loss=0.284]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.8472
+  MAE:   0.7028
+  RMSE:  0.9204
+  R²:    0.1528
+  MAPE:  1.1261
+  SMAPE: 1.2659
+------------------------------------------------------------
+Epoch 1:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.284]         Epoch 2:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.284]Epoch 2:  10%|█         | 1/10 [00:00<00:03,  2.27it/s, v_num=pp5y, train_loss=0.284]Epoch 2:  10%|█         | 1/10 [00:00<00:03,  2.26it/s, v_num=pp5y, train_loss=0.702]Epoch 2:  20%|██        | 2/10 [00:00<00:01,  4.23it/s, v_num=pp5y, train_loss=0.702]Epoch 2:  20%|██        | 2/10 [00:00<00:01,  4.23it/s, v_num=pp5y, train_loss=0.658]Epoch 2:  30%|███       | 3/10 [00:00<00:01,  6.08it/s, v_num=pp5y, train_loss=0.658]Epoch 2:  30%|███       | 3/10 [00:00<00:01,  6.07it/s, v_num=pp5y, train_loss=0.627]Epoch 2:  40%|████      | 4/10 [00:00<00:00,  7.84it/s, v_num=pp5y, train_loss=0.627]Epoch 2:  40%|████      | 4/10 [00:00<00:00,  7.83it/s, v_num=pp5y, train_loss=0.888]Epoch 2:  50%|█████     | 5/10 [00:00<00:00,  9.46it/s, v_num=pp5y, train_loss=0.888]Epoch 2:  50%|█████     | 5/10 [00:00<00:00,  9.45it/s, v_num=pp5y, train_loss=0.916]Epoch 2:  60%|██████    | 6/10 [00:00<00:00, 10.92it/s, v_num=pp5y, train_loss=0.916]Epoch 2:  60%|██████    | 6/10 [00:00<00:00, 10.90it/s, v_num=pp5y, train_loss=0.551]Epoch 2:  70%|███████   | 7/10 [00:00<00:00, 12.26it/s, v_num=pp5y, train_loss=0.551]Epoch 2:  70%|███████   | 7/10 [00:00<00:00, 12.25it/s, v_num=pp5y, train_loss=1.060]Epoch 2:  80%|████████  | 8/10 [00:00<00:00, 13.67it/s, v_num=pp5y, train_loss=1.060]Epoch 2:  80%|████████  | 8/10 [00:00<00:00, 13.66it/s, v_num=pp5y, train_loss=1.270]Epoch 2:  90%|█████████ | 9/10 [00:00<00:00, 14.85it/s, v_num=pp5y, train_loss=1.270]Epoch 2:  90%|█████████ | 9/10 [00:00<00:00, 14.84it/s, v_num=pp5y, train_loss=0.555]Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 16.05it/s, v_num=pp5y, train_loss=0.555]Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 16.04it/s, v_num=pp5y, train_loss=1.510]Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 15.99it/s, v_num=pp5y, train_loss=1.510]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.8176
+  MAE:   0.6936
+  RMSE:  0.9042
+  R²:    0.1824
+  MAPE:  1.0726
+  SMAPE: 1.2981
+------------------------------------------------------------
+Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 15.12it/s, v_num=pp5y, train_loss=1.510]
+
+[Fold 1] Testing on 4 future years: [2017, 2018, 2019, 2020]
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2017]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2017]
+  Y norm: mean=8.2571, std=0.9750
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 50.72it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.7860
+  MAE:   0.7430
+  RMSE:  0.8865
+  R²:    0.0985
+  MAPE:  0.0875
+  SMAPE: 0.0876
+  NRMSE: 0.1013
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 28.29it/s]
+  Year 2017: NRMSE=0.1013, R2=0.0985
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2018]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2018]
+  Y norm: mean=8.2571, std=0.9750
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 42.29it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.4532
+  MAE:   0.5388
+  RMSE:  0.6732
+  R²:    0.2732
+  MAPE:  0.0674
+  SMAPE: 0.0657
+  NRMSE: 0.0794
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 25.64it/s]
+  Year 2018: NRMSE=0.0794, R2=0.2732
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2019]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2019]
+  Y norm: mean=8.2571, std=0.9750
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 52.90it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   1.3544
+  MAE:   1.0895
+  RMSE:  1.1638
+  R²:    -0.5031
+  MAPE:  0.1160
+  SMAPE: 0.1220
+  NRMSE: 0.1262
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 29.27it/s]
+  Year 2019: NRMSE=0.1262, R2=-0.5031
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2020]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2020]
+  Y norm: mean=8.2571, std=0.9750
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 52.86it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.4271
+  MAE:   0.5146
+  RMSE:  0.6535
+  R²:    0.2700
+  MAPE:  0.0649
+  SMAPE: 0.0631
+  NRMSE: 0.0780
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 29.29it/s]
+  Year 2020: NRMSE=0.0780, R2=0.2700
+
+======================================================================
+FOLD 3/5
+======================================================================
+  Train years: [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017]
+  Train end year: 2017
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017], Val [], Test []
+  Years Summary:
+    Train years (14): [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017]
+    Val years (0):   []
+    Test years (0):  []
+  Y norm: mean=8.2945, std=0.9807
+  Feature norm params: 18 features
+  Samples: train=159, val=0, test=0
+[Model] TS features=9, Static features=9
+
+[Fold 2] Training...
+
+============================================================
+DEBUG: on_fit_start() called - counting model parameters...
+============================================================
+DEBUG: Model type: InformerModel
+DEBUG: Has base_model: True
+DEBUG: Has regression_head: True
+DEBUG: base_model type: InformerModel
+DEBUG: base_model parameters: 180,928
+DEBUG: regression_head parameters: 2,773
+DEBUG: Number of parameter groups: 102
+DEBUG: Total parameters counted: 183,701
+DEBUG: Parameter size (bytes): 734,804
+DEBUG: Buffer size (bytes): 520
+============================================================
+MODEL SIZE: 0.70 MB
+Total parameters: 183,701
+============================================================
+
+DEBUG: Logged to logger successfully
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]                                                  Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/10 [00:00<?, ?it/s]Epoch 0:  10%|█         | 1/10 [00:00<00:00, 31.86it/s]Epoch 0:  10%|█         | 1/10 [00:00<00:00, 31.25it/s, v_num=pp5y, train_loss=1.630]Epoch 0:  20%|██        | 2/10 [00:00<00:00, 35.35it/s, v_num=pp5y, train_loss=1.630]Epoch 0:  20%|██        | 2/10 [00:00<00:00, 35.04it/s, v_num=pp5y, train_loss=0.574]Epoch 0:  30%|███       | 3/10 [00:00<00:00, 38.88it/s, v_num=pp5y, train_loss=0.574]Epoch 0:  30%|███       | 3/10 [00:00<00:00, 38.63it/s, v_num=pp5y, train_loss=0.960]Epoch 0:  40%|████      | 4/10 [00:00<00:00, 40.98it/s, v_num=pp5y, train_loss=0.960]Epoch 0:  40%|████      | 4/10 [00:00<00:00, 40.78it/s, v_num=pp5y, train_loss=0.695]Epoch 0:  50%|█████     | 5/10 [00:00<00:00, 41.56it/s, v_num=pp5y, train_loss=0.695]Epoch 0:  50%|█████     | 5/10 [00:00<00:00, 41.38it/s, v_num=pp5y, train_loss=0.688]Epoch 0:  60%|██████    | 6/10 [00:00<00:00, 42.91it/s, v_num=pp5y, train_loss=0.688]Epoch 0:  60%|██████    | 6/10 [00:00<00:00, 42.77it/s, v_num=pp5y, train_loss=1.210]Epoch 0:  70%|███████   | 7/10 [00:00<00:00, 44.38it/s, v_num=pp5y, train_loss=1.210]Epoch 0:  70%|███████   | 7/10 [00:00<00:00, 44.25it/s, v_num=pp5y, train_loss=1.070]Epoch 0:  80%|████████  | 8/10 [00:00<00:00, 45.20it/s, v_num=pp5y, train_loss=1.070]Epoch 0:  80%|████████  | 8/10 [00:00<00:00, 45.07it/s, v_num=pp5y, train_loss=1.410]Epoch 0:  90%|█████████ | 9/10 [00:00<00:00, 45.57it/s, v_num=pp5y, train_loss=1.410]Epoch 0:  90%|█████████ | 9/10 [00:00<00:00, 45.46it/s, v_num=pp5y, train_loss=1.090]Epoch 0: 100%|██████████| 10/10 [00:00<00:00, 47.49it/s, v_num=pp5y, train_loss=1.090]Epoch 0: 100%|██████████| 10/10 [00:00<00:00, 47.39it/s, v_num=pp5y, train_loss=2.150]Epoch 0: 100%|██████████| 10/10 [00:00<00:00, 47.08it/s, v_num=pp5y, train_loss=2.150]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   1.1417
+  MAE:   0.8016
+  RMSE:  1.0685
+  R²:    -0.1417
+  MAPE:  2.2580
+  SMAPE: 1.2731
+------------------------------------------------------------
+Epoch 0:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=2.150]         Epoch 1:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=2.150]Epoch 1:  10%|█         | 1/10 [00:00<00:04,  2.03it/s, v_num=pp5y, train_loss=2.150]Epoch 1:  10%|█         | 1/10 [00:00<00:04,  2.02it/s, v_num=pp5y, train_loss=0.626]Epoch 1:  20%|██        | 2/10 [00:00<00:02,  3.86it/s, v_num=pp5y, train_loss=0.626]Epoch 1:  20%|██        | 2/10 [00:00<00:02,  3.86it/s, v_num=pp5y, train_loss=0.901]Epoch 1:  30%|███       | 3/10 [00:00<00:01,  5.54it/s, v_num=pp5y, train_loss=0.901]Epoch 1:  30%|███       | 3/10 [00:00<00:01,  5.54it/s, v_num=pp5y, train_loss=0.612]Epoch 1:  40%|████      | 4/10 [00:00<00:00,  7.14it/s, v_num=pp5y, train_loss=0.612]Epoch 1:  40%|████      | 4/10 [00:00<00:00,  7.14it/s, v_num=pp5y, train_loss=0.677]Epoch 1:  50%|█████     | 5/10 [00:00<00:00,  8.46it/s, v_num=pp5y, train_loss=0.677]Epoch 1:  50%|█████     | 5/10 [00:00<00:00,  8.45it/s, v_num=pp5y, train_loss=1.480]Epoch 1:  60%|██████    | 6/10 [00:00<00:00,  9.81it/s, v_num=pp5y, train_loss=1.480]Epoch 1:  60%|██████    | 6/10 [00:00<00:00,  9.80it/s, v_num=pp5y, train_loss=0.899]Epoch 1:  70%|███████   | 7/10 [00:00<00:00, 11.03it/s, v_num=pp5y, train_loss=0.899]Epoch 1:  70%|███████   | 7/10 [00:00<00:00, 11.02it/s, v_num=pp5y, train_loss=0.854]Epoch 1:  80%|████████  | 8/10 [00:00<00:00, 12.24it/s, v_num=pp5y, train_loss=0.854]Epoch 1:  80%|████████  | 8/10 [00:00<00:00, 12.23it/s, v_num=pp5y, train_loss=0.710]Epoch 1:  90%|█████████ | 9/10 [00:00<00:00, 13.39it/s, v_num=pp5y, train_loss=0.710]Epoch 1:  90%|█████████ | 9/10 [00:00<00:00, 13.38it/s, v_num=pp5y, train_loss=1.430]Epoch 1: 100%|██████████| 10/10 [00:00<00:00, 14.41it/s, v_num=pp5y, train_loss=1.430]Epoch 1: 100%|██████████| 10/10 [00:00<00:00, 14.40it/s, v_num=pp5y, train_loss=1.010]Epoch 1: 100%|██████████| 10/10 [00:00<00:00, 14.37it/s, v_num=pp5y, train_loss=1.010]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.9189
+  MAE:   0.7446
+  RMSE:  0.9586
+  R²:    0.0811
+  MAPE:  3.2243
+  SMAPE: 1.3587
+------------------------------------------------------------
+Epoch 1:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.010]         Epoch 2:   0%|          | 0/10 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.010]Epoch 2:  10%|█         | 1/10 [00:00<00:04,  2.09it/s, v_num=pp5y, train_loss=1.010]Epoch 2:  10%|█         | 1/10 [00:00<00:04,  2.08it/s, v_num=pp5y, train_loss=0.951]Epoch 2:  20%|██        | 2/10 [00:00<00:02,  3.98it/s, v_num=pp5y, train_loss=0.951]Epoch 2:  20%|██        | 2/10 [00:00<00:02,  3.98it/s, v_num=pp5y, train_loss=0.874]Epoch 2:  30%|███       | 3/10 [00:00<00:01,  5.71it/s, v_num=pp5y, train_loss=0.874]Epoch 2:  30%|███       | 3/10 [00:00<00:01,  5.70it/s, v_num=pp5y, train_loss=0.879]Epoch 2:  40%|████      | 4/10 [00:00<00:00,  7.34it/s, v_num=pp5y, train_loss=0.879]Epoch 2:  40%|████      | 4/10 [00:00<00:00,  7.34it/s, v_num=pp5y, train_loss=1.380]Epoch 2:  50%|█████     | 5/10 [00:00<00:00,  8.73it/s, v_num=pp5y, train_loss=1.380]Epoch 2:  50%|█████     | 5/10 [00:00<00:00,  8.72it/s, v_num=pp5y, train_loss=1.230]Epoch 2:  60%|██████    | 6/10 [00:00<00:00, 10.09it/s, v_num=pp5y, train_loss=1.230]Epoch 2:  60%|██████    | 6/10 [00:00<00:00, 10.08it/s, v_num=pp5y, train_loss=0.610]Epoch 2:  70%|███████   | 7/10 [00:00<00:00, 11.35it/s, v_num=pp5y, train_loss=0.610]Epoch 2:  70%|███████   | 7/10 [00:00<00:00, 11.34it/s, v_num=pp5y, train_loss=0.908]Epoch 2:  80%|████████  | 8/10 [00:00<00:00, 12.66it/s, v_num=pp5y, train_loss=0.908]Epoch 2:  80%|████████  | 8/10 [00:00<00:00, 12.65it/s, v_num=pp5y, train_loss=0.738]Epoch 2:  90%|█████████ | 9/10 [00:00<00:00, 13.91it/s, v_num=pp5y, train_loss=0.738]Epoch 2:  90%|█████████ | 9/10 [00:00<00:00, 13.90it/s, v_num=pp5y, train_loss=0.684]Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 14.98it/s, v_num=pp5y, train_loss=0.684]Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 14.97it/s, v_num=pp5y, train_loss=0.803]Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 14.94it/s, v_num=pp5y, train_loss=0.803]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.9065
+  MAE:   0.7461
+  RMSE:  0.9521
+  R²:    0.0935
+  MAPE:  2.4811
+  SMAPE: 1.4005
+------------------------------------------------------------
+Epoch 2: 100%|██████████| 10/10 [00:00<00:00, 14.15it/s, v_num=pp5y, train_loss=0.803]
+
+[Fold 2] Testing on 3 future years: [2018, 2019, 2020]
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2018]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2018]
+  Y norm: mean=8.2945, std=0.9807
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 47.87it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.5011
+  MAE:   0.5788
+  RMSE:  0.7079
+  R²:    0.1964
+  MAPE:  0.0720
+  SMAPE: 0.0705
+  NRMSE: 0.0835
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 24.80it/s]
+  Year 2018: NRMSE=0.0835, R2=0.1964
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2019]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2019]
+  Y norm: mean=8.2945, std=0.9807
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 45.04it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   1.3025
+  MAE:   1.0690
+  RMSE:  1.1413
+  R²:    -0.4454
+  MAPE:  0.1145
+  SMAPE: 0.1197
+  NRMSE: 0.1238
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 26.60it/s]
+  Year 2019: NRMSE=0.1238, R2=-0.4454
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2020]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2020]
+  Y norm: mean=8.2945, std=0.9807
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 54.20it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.4285
+  MAE:   0.4965
+  RMSE:  0.6546
+  R²:    0.2677
+  MAPE:  0.0633
+  SMAPE: 0.0610
+  NRMSE: 0.0781
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 30.00it/s]
+  Year 2020: NRMSE=0.0781, R2=0.2677
+
+======================================================================
+FOLD 4/5
+======================================================================
+  Train years: [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+  Train end year: 2018
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018], Val [], Test []
+  Years Summary:
+    Train years (15): [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    Val years (0):   []
+    Test years (0):  []
+  Y norm: mean=8.3072, std=0.9697
+  Feature norm params: 18 features
+  Samples: train=171, val=0, test=0
+[Model] TS features=9, Static features=9
+
+[Fold 3] Training...
+
+============================================================
+DEBUG: on_fit_start() called - counting model parameters...
+============================================================
+DEBUG: Model type: InformerModel
+DEBUG: Has base_model: True
+DEBUG: Has regression_head: True
+DEBUG: base_model type: InformerModel
+DEBUG: base_model parameters: 180,928
+DEBUG: regression_head parameters: 2,773
+DEBUG: Number of parameter groups: 102
+DEBUG: Total parameters counted: 183,701
+DEBUG: Parameter size (bytes): 734,804
+DEBUG: Buffer size (bytes): 520
+============================================================
+MODEL SIZE: 0.70 MB
+Total parameters: 183,701
+============================================================
+
+DEBUG: Logged to logger successfully
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]                                                  Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/11 [00:00<?, ?it/s]Epoch 0:   9%|▉         | 1/11 [00:00<00:00, 42.09it/s]Epoch 0:   9%|▉         | 1/11 [00:00<00:00, 41.12it/s, v_num=pp5y, train_loss=1.110]Epoch 0:  18%|█▊        | 2/11 [00:00<00:00, 41.56it/s, v_num=pp5y, train_loss=1.110]Epoch 0:  18%|█▊        | 2/11 [00:00<00:00, 41.18it/s, v_num=pp5y, train_loss=0.996]Epoch 0:  27%|██▋       | 3/11 [00:00<00:00, 41.99it/s, v_num=pp5y, train_loss=0.996]Epoch 0:  27%|██▋       | 3/11 [00:00<00:00, 41.75it/s, v_num=pp5y, train_loss=0.908]Epoch 0:  36%|███▋      | 4/11 [00:00<00:00, 46.01it/s, v_num=pp5y, train_loss=0.908]Epoch 0:  36%|███▋      | 4/11 [00:00<00:00, 45.78it/s, v_num=pp5y, train_loss=0.694]Epoch 0:  45%|████▌     | 5/11 [00:00<00:00, 46.79it/s, v_num=pp5y, train_loss=0.694]Epoch 0:  45%|████▌     | 5/11 [00:00<00:00, 46.59it/s, v_num=pp5y, train_loss=2.200]Epoch 0:  55%|█████▍    | 6/11 [00:00<00:00, 47.29it/s, v_num=pp5y, train_loss=2.200]Epoch 0:  55%|█████▍    | 6/11 [00:00<00:00, 47.12it/s, v_num=pp5y, train_loss=1.160]Epoch 0:  64%|██████▎   | 7/11 [00:00<00:00, 47.62it/s, v_num=pp5y, train_loss=1.160]Epoch 0:  64%|██████▎   | 7/11 [00:00<00:00, 47.48it/s, v_num=pp5y, train_loss=1.140]Epoch 0:  73%|███████▎  | 8/11 [00:00<00:00, 46.43it/s, v_num=pp5y, train_loss=1.140]Epoch 0:  73%|███████▎  | 8/11 [00:00<00:00, 46.31it/s, v_num=pp5y, train_loss=0.608]Epoch 0:  82%|████████▏ | 9/11 [00:00<00:00, 46.84it/s, v_num=pp5y, train_loss=0.608]Epoch 0:  82%|████████▏ | 9/11 [00:00<00:00, 46.73it/s, v_num=pp5y, train_loss=1.200]Epoch 0:  91%|█████████ | 10/11 [00:00<00:00, 47.17it/s, v_num=pp5y, train_loss=1.200]Epoch 0:  91%|█████████ | 10/11 [00:00<00:00, 47.08it/s, v_num=pp5y, train_loss=0.709]Epoch 0: 100%|██████████| 11/11 [00:00<00:00, 48.05it/s, v_num=pp5y, train_loss=0.709]Epoch 0: 100%|██████████| 11/11 [00:00<00:00, 47.95it/s, v_num=pp5y, train_loss=1.140]Epoch 0: 100%|██████████| 11/11 [00:00<00:00, 47.75it/s, v_num=pp5y, train_loss=1.140]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   1.0764
+  MAE:   0.8230
+  RMSE:  1.0375
+  R²:    -0.0764
+  MAPE:  3.1138
+  SMAPE: 1.5206
+------------------------------------------------------------
+Epoch 0:   0%|          | 0/11 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.140]         Epoch 1:   0%|          | 0/11 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.140]Epoch 1:   9%|▉         | 1/11 [00:00<00:04,  2.03it/s, v_num=pp5y, train_loss=1.140]Epoch 1:   9%|▉         | 1/11 [00:00<00:04,  2.02it/s, v_num=pp5y, train_loss=1.140]Epoch 1:  18%|█▊        | 2/11 [00:00<00:02,  3.94it/s, v_num=pp5y, train_loss=1.140]Epoch 1:  18%|█▊        | 2/11 [00:00<00:02,  3.93it/s, v_num=pp5y, train_loss=1.040]Epoch 1:  27%|██▋       | 3/11 [00:00<00:01,  5.59it/s, v_num=pp5y, train_loss=1.040]Epoch 1:  27%|██▋       | 3/11 [00:00<00:01,  5.58it/s, v_num=pp5y, train_loss=0.951]Epoch 1:  36%|███▋      | 4/11 [00:00<00:00,  7.20it/s, v_num=pp5y, train_loss=0.951]Epoch 1:  36%|███▋      | 4/11 [00:00<00:00,  7.20it/s, v_num=pp5y, train_loss=0.740]Epoch 1:  45%|████▌     | 5/11 [00:00<00:00,  8.57it/s, v_num=pp5y, train_loss=0.740]Epoch 1:  45%|████▌     | 5/11 [00:00<00:00,  8.57it/s, v_num=pp5y, train_loss=1.060]Epoch 1:  55%|█████▍    | 6/11 [00:00<00:00,  9.95it/s, v_num=pp5y, train_loss=1.060]Epoch 1:  55%|█████▍    | 6/11 [00:00<00:00,  9.94it/s, v_num=pp5y, train_loss=0.744]Epoch 1:  64%|██████▎   | 7/11 [00:00<00:00, 11.23it/s, v_num=pp5y, train_loss=0.744]Epoch 1:  64%|██████▎   | 7/11 [00:00<00:00, 11.23it/s, v_num=pp5y, train_loss=0.520]Epoch 1:  73%|███████▎  | 8/11 [00:00<00:00, 12.45it/s, v_num=pp5y, train_loss=0.520]Epoch 1:  73%|███████▎  | 8/11 [00:00<00:00, 12.44it/s, v_num=pp5y, train_loss=0.772]Epoch 1:  82%|████████▏ | 9/11 [00:00<00:00, 13.58it/s, v_num=pp5y, train_loss=0.772]Epoch 1:  82%|████████▏ | 9/11 [00:00<00:00, 13.58it/s, v_num=pp5y, train_loss=0.806]Epoch 1:  91%|█████████ | 10/11 [00:00<00:00, 14.65it/s, v_num=pp5y, train_loss=0.806]Epoch 1:  91%|█████████ | 10/11 [00:00<00:00, 14.64it/s, v_num=pp5y, train_loss=1.480]Epoch 1: 100%|██████████| 11/11 [00:00<00:00, 15.55it/s, v_num=pp5y, train_loss=1.480]Epoch 1: 100%|██████████| 11/11 [00:00<00:00, 15.54it/s, v_num=pp5y, train_loss=1.940]Epoch 1: 100%|██████████| 11/11 [00:00<00:00, 15.52it/s, v_num=pp5y, train_loss=1.940]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.9902
+  MAE:   0.7783
+  RMSE:  0.9951
+  R²:    0.0098
+  MAPE:  5.7871
+  SMAPE: 1.4766
+------------------------------------------------------------
+Epoch 1:   0%|          | 0/11 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.940]         Epoch 2:   0%|          | 0/11 [00:00<?, ?it/s, v_num=pp5y, train_loss=1.940]Epoch 2:   9%|▉         | 1/11 [00:00<00:04,  2.06it/s, v_num=pp5y, train_loss=1.940]Epoch 2:   9%|▉         | 1/11 [00:00<00:04,  2.05it/s, v_num=pp5y, train_loss=0.686]Epoch 2:  18%|█▊        | 2/11 [00:00<00:02,  3.94it/s, v_num=pp5y, train_loss=0.686]Epoch 2:  18%|█▊        | 2/11 [00:00<00:02,  3.93it/s, v_num=pp5y, train_loss=0.676]Epoch 2:  27%|██▋       | 3/11 [00:00<00:01,  5.61it/s, v_num=pp5y, train_loss=0.676]Epoch 2:  27%|██▋       | 3/11 [00:00<00:01,  5.61it/s, v_num=pp5y, train_loss=0.708]Epoch 2:  36%|███▋      | 4/11 [00:00<00:00,  7.20it/s, v_num=pp5y, train_loss=0.708]Epoch 2:  36%|███▋      | 4/11 [00:00<00:00,  7.20it/s, v_num=pp5y, train_loss=0.659]Epoch 2:  45%|████▌     | 5/11 [00:00<00:00,  8.71it/s, v_num=pp5y, train_loss=0.659]Epoch 2:  45%|████▌     | 5/11 [00:00<00:00,  8.70it/s, v_num=pp5y, train_loss=1.030]Epoch 2:  55%|█████▍    | 6/11 [00:00<00:00, 10.10it/s, v_num=pp5y, train_loss=1.030]Epoch 2:  55%|█████▍    | 6/11 [00:00<00:00, 10.09it/s, v_num=pp5y, train_loss=1.210]Epoch 2:  64%|██████▎   | 7/11 [00:00<00:00, 11.38it/s, v_num=pp5y, train_loss=1.210]Epoch 2:  64%|██████▎   | 7/11 [00:00<00:00, 11.37it/s, v_num=pp5y, train_loss=1.580]Epoch 2:  73%|███████▎  | 8/11 [00:00<00:00, 12.59it/s, v_num=pp5y, train_loss=1.580]Epoch 2:  73%|███████▎  | 8/11 [00:00<00:00, 12.58it/s, v_num=pp5y, train_loss=0.957]Epoch 2:  82%|████████▏ | 9/11 [00:00<00:00, 13.71it/s, v_num=pp5y, train_loss=0.957]Epoch 2:  82%|████████▏ | 9/11 [00:00<00:00, 13.70it/s, v_num=pp5y, train_loss=0.415]Epoch 2:  91%|█████████ | 10/11 [00:00<00:00, 14.77it/s, v_num=pp5y, train_loss=0.415]Epoch 2:  91%|█████████ | 10/11 [00:00<00:00, 14.76it/s, v_num=pp5y, train_loss=0.383]Epoch 2: 100%|██████████| 11/11 [00:00<00:00, 15.77it/s, v_num=pp5y, train_loss=0.383]Epoch 2: 100%|██████████| 11/11 [00:00<00:00, 15.76it/s, v_num=pp5y, train_loss=0.832]Epoch 2: 100%|██████████| 11/11 [00:00<00:00, 15.74it/s, v_num=pp5y, train_loss=0.832]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.8305
+  MAE:   0.7146
+  RMSE:  0.9113
+  R²:    0.1695
+  MAPE:  4.4783
+  SMAPE: 1.3193
+------------------------------------------------------------
+Epoch 2: 100%|██████████| 11/11 [00:00<00:00, 14.97it/s, v_num=pp5y, train_loss=0.832]
+
+[Fold 3] Testing on 2 future years: [2019, 2020]
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2019]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2019]
+  Y norm: mean=8.3072, std=0.9697
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 50.81it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   1.5149
+  MAE:   1.1024
+  RMSE:  1.2308
+  R²:    -0.6812
+  MAPE:  0.1158
+  SMAPE: 0.1234
+  NRMSE: 0.1335
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 28.18it/s]
+  Year 2019: NRMSE=0.1335, R2=-0.6812
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2020]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2020]
+  Y norm: mean=8.3072, std=0.9697
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 52.59it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.4272
+  MAE:   0.5711
+  RMSE:  0.6536
+  R²:    0.2698
+  MAPE:  0.0702
+  SMAPE: 0.0697
+  NRMSE: 0.0780
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 24.84it/s]
+  Year 2020: NRMSE=0.0780, R2=0.2698
+
+======================================================================
+FOLD 5/5
+======================================================================
+  Train years: [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019]
+  Train end year: 2019
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019], Val [], Test []
+  Years Summary:
+    Train years (16): [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019]
+    Val years (0):   []
+    Test years (0):  []
+  Y norm: mean=8.3669, std=0.9943
+  Feature norm params: 18 features
+  Samples: train=183, val=0, test=0
+[Model] TS features=9, Static features=9
+
+[Fold 4] Training...
+
+============================================================
+DEBUG: on_fit_start() called - counting model parameters...
+============================================================
+DEBUG: Model type: InformerModel
+DEBUG: Has base_model: True
+DEBUG: Has regression_head: True
+DEBUG: base_model type: InformerModel
+DEBUG: base_model parameters: 180,928
+DEBUG: regression_head parameters: 2,773
+DEBUG: Number of parameter groups: 102
+DEBUG: Total parameters counted: 183,701
+DEBUG: Parameter size (bytes): 734,804
+DEBUG: Buffer size (bytes): 520
+============================================================
+MODEL SIZE: 0.70 MB
+Total parameters: 183,701
+============================================================
+
+DEBUG: Logged to logger successfully
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]                                                  Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/12 [00:00<?, ?it/s]Epoch 0:   8%|▊         | 1/12 [00:00<00:00, 42.00it/s]Epoch 0:   8%|▊         | 1/12 [00:00<00:00, 40.97it/s, v_num=pp5y, train_loss=1.240]Epoch 0:  17%|█▋        | 2/12 [00:00<00:00, 41.92it/s, v_num=pp5y, train_loss=1.240]Epoch 0:  17%|█▋        | 2/12 [00:00<00:00, 41.48it/s, v_num=pp5y, train_loss=0.958]Epoch 0:  25%|██▌       | 3/12 [00:00<00:00, 42.48it/s, v_num=pp5y, train_loss=0.958]Epoch 0:  25%|██▌       | 3/12 [00:00<00:00, 42.19it/s, v_num=pp5y, train_loss=0.757]Epoch 0:  33%|███▎      | 4/12 [00:00<00:00, 42.21it/s, v_num=pp5y, train_loss=0.757]Epoch 0:  33%|███▎      | 4/12 [00:00<00:00, 42.01it/s, v_num=pp5y, train_loss=0.769]Epoch 0:  42%|████▏     | 5/12 [00:00<00:00, 43.53it/s, v_num=pp5y, train_loss=0.769]Epoch 0:  42%|████▏     | 5/12 [00:00<00:00, 43.36it/s, v_num=pp5y, train_loss=0.598]Epoch 0:  50%|█████     | 6/12 [00:00<00:00, 43.17it/s, v_num=pp5y, train_loss=0.598]Epoch 0:  50%|█████     | 6/12 [00:00<00:00, 43.03it/s, v_num=pp5y, train_loss=1.050]Epoch 0:  58%|█████▊    | 7/12 [00:00<00:00, 43.72it/s, v_num=pp5y, train_loss=1.050]Epoch 0:  58%|█████▊    | 7/12 [00:00<00:00, 43.60it/s, v_num=pp5y, train_loss=0.709]Epoch 0:  67%|██████▋   | 8/12 [00:00<00:00, 44.68it/s, v_num=pp5y, train_loss=0.709]Epoch 0:  67%|██████▋   | 8/12 [00:00<00:00, 44.56it/s, v_num=pp5y, train_loss=0.609]Epoch 0:  75%|███████▌  | 9/12 [00:00<00:00, 45.19it/s, v_num=pp5y, train_loss=0.609]Epoch 0:  75%|███████▌  | 9/12 [00:00<00:00, 45.09it/s, v_num=pp5y, train_loss=1.020]Epoch 0:  83%|████████▎ | 10/12 [00:00<00:00, 46.30it/s, v_num=pp5y, train_loss=1.020]Epoch 0:  83%|████████▎ | 10/12 [00:00<00:00, 46.21it/s, v_num=pp5y, train_loss=0.903]Epoch 0:  92%|█████████▏| 11/12 [00:00<00:00, 47.22it/s, v_num=pp5y, train_loss=0.903]Epoch 0:  92%|█████████▏| 11/12 [00:00<00:00, 47.13it/s, v_num=pp5y, train_loss=0.786]Epoch 0: 100%|██████████| 12/12 [00:00<00:00, 46.81it/s, v_num=pp5y, train_loss=0.786]Epoch 0: 100%|██████████| 12/12 [00:00<00:00, 46.72it/s, v_num=pp5y, train_loss=0.662]Epoch 0: 100%|██████████| 12/12 [00:00<00:00, 46.53it/s, v_num=pp5y, train_loss=0.662]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.8474
+  MAE:   0.7577
+  RMSE:  0.9205
+  R²:    0.1526
+  MAPE:  2.8015
+  SMAPE: 1.3669
+------------------------------------------------------------
+Epoch 0:   0%|          | 0/12 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.662]         Epoch 1:   0%|          | 0/12 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.662]Epoch 1:   8%|▊         | 1/12 [00:00<00:05,  2.12it/s, v_num=pp5y, train_loss=0.662]Epoch 1:   8%|▊         | 1/12 [00:00<00:05,  2.12it/s, v_num=pp5y, train_loss=0.757]Epoch 1:  17%|█▋        | 2/12 [00:00<00:02,  3.98it/s, v_num=pp5y, train_loss=0.757]Epoch 1:  17%|█▋        | 2/12 [00:00<00:02,  3.98it/s, v_num=pp5y, train_loss=1.190]Epoch 1:  25%|██▌       | 3/12 [00:00<00:01,  5.68it/s, v_num=pp5y, train_loss=1.190]Epoch 1:  25%|██▌       | 3/12 [00:00<00:01,  5.67it/s, v_num=pp5y, train_loss=0.682]Epoch 1:  33%|███▎      | 4/12 [00:00<00:01,  7.35it/s, v_num=pp5y, train_loss=0.682]Epoch 1:  33%|███▎      | 4/12 [00:00<00:01,  7.35it/s, v_num=pp5y, train_loss=1.240]Epoch 1:  42%|████▏     | 5/12 [00:00<00:00,  8.87it/s, v_num=pp5y, train_loss=1.240]Epoch 1:  42%|████▏     | 5/12 [00:00<00:00,  8.86it/s, v_num=pp5y, train_loss=0.631]Epoch 1:  50%|█████     | 6/12 [00:00<00:00, 10.25it/s, v_num=pp5y, train_loss=0.631]Epoch 1:  50%|█████     | 6/12 [00:00<00:00, 10.24it/s, v_num=pp5y, train_loss=0.563]Epoch 1:  58%|█████▊    | 7/12 [00:00<00:00, 11.56it/s, v_num=pp5y, train_loss=0.563]Epoch 1:  58%|█████▊    | 7/12 [00:00<00:00, 11.55it/s, v_num=pp5y, train_loss=0.839]Epoch 1:  67%|██████▋   | 8/12 [00:00<00:00, 12.80it/s, v_num=pp5y, train_loss=0.839]Epoch 1:  67%|██████▋   | 8/12 [00:00<00:00, 12.79it/s, v_num=pp5y, train_loss=0.746]Epoch 1:  75%|███████▌  | 9/12 [00:00<00:00, 13.94it/s, v_num=pp5y, train_loss=0.746]Epoch 1:  75%|███████▌  | 9/12 [00:00<00:00, 13.93it/s, v_num=pp5y, train_loss=0.681]Epoch 1:  83%|████████▎ | 10/12 [00:00<00:00, 15.08it/s, v_num=pp5y, train_loss=0.681]Epoch 1:  83%|████████▎ | 10/12 [00:00<00:00, 15.07it/s, v_num=pp5y, train_loss=0.757]Epoch 1:  92%|█████████▏| 11/12 [00:00<00:00, 16.10it/s, v_num=pp5y, train_loss=0.757]Epoch 1:  92%|█████████▏| 11/12 [00:00<00:00, 16.09it/s, v_num=pp5y, train_loss=0.356]Epoch 1: 100%|██████████| 12/12 [00:00<00:00, 17.15it/s, v_num=pp5y, train_loss=0.356]Epoch 1: 100%|██████████| 12/12 [00:00<00:00, 17.14it/s, v_num=pp5y, train_loss=0.588]Epoch 1: 100%|██████████| 12/12 [00:00<00:00, 17.11it/s, v_num=pp5y, train_loss=0.588]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.7602
+  MAE:   0.6995
+  RMSE:  0.8719
+  R²:    0.2398
+  MAPE:  2.8513
+  SMAPE: 1.2546
+------------------------------------------------------------
+Epoch 1:   0%|          | 0/12 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.588]         Epoch 2:   0%|          | 0/12 [00:00<?, ?it/s, v_num=pp5y, train_loss=0.588]Epoch 2:   8%|▊         | 1/12 [00:00<00:05,  2.13it/s, v_num=pp5y, train_loss=0.588]Epoch 2:   8%|▊         | 1/12 [00:00<00:05,  2.12it/s, v_num=pp5y, train_loss=0.508]Epoch 2:  17%|█▋        | 2/12 [00:00<00:02,  4.06it/s, v_num=pp5y, train_loss=0.508]Epoch 2:  17%|█▋        | 2/12 [00:00<00:02,  4.06it/s, v_num=pp5y, train_loss=0.948]Epoch 2:  25%|██▌       | 3/12 [00:00<00:01,  5.87it/s, v_num=pp5y, train_loss=0.948]Epoch 2:  25%|██▌       | 3/12 [00:00<00:01,  5.87it/s, v_num=pp5y, train_loss=0.477]Epoch 2:  33%|███▎      | 4/12 [00:00<00:01,  7.47it/s, v_num=pp5y, train_loss=0.477]Epoch 2:  33%|███▎      | 4/12 [00:00<00:01,  7.46it/s, v_num=pp5y, train_loss=0.781]Epoch 2:  42%|████▏     | 5/12 [00:00<00:00,  8.99it/s, v_num=pp5y, train_loss=0.781]Epoch 2:  42%|████▏     | 5/12 [00:00<00:00,  8.98it/s, v_num=pp5y, train_loss=1.160]Epoch 2:  50%|█████     | 6/12 [00:00<00:00, 10.30it/s, v_num=pp5y, train_loss=1.160]Epoch 2:  50%|█████     | 6/12 [00:00<00:00, 10.29it/s, v_num=pp5y, train_loss=0.768]Epoch 2:  58%|█████▊    | 7/12 [00:00<00:00, 11.59it/s, v_num=pp5y, train_loss=0.768]Epoch 2:  58%|█████▊    | 7/12 [00:00<00:00, 11.58it/s, v_num=pp5y, train_loss=0.589]Epoch 2:  67%|██████▋   | 8/12 [00:00<00:00, 12.82it/s, v_num=pp5y, train_loss=0.589]Epoch 2:  67%|██████▋   | 8/12 [00:00<00:00, 12.81it/s, v_num=pp5y, train_loss=0.790]Epoch 2:  75%|███████▌  | 9/12 [00:00<00:00, 14.10it/s, v_num=pp5y, train_loss=0.790]Epoch 2:  75%|███████▌  | 9/12 [00:00<00:00, 14.09it/s, v_num=pp5y, train_loss=0.854]Epoch 2:  83%|████████▎ | 10/12 [00:00<00:00, 15.29it/s, v_num=pp5y, train_loss=0.854]Epoch 2:  83%|████████▎ | 10/12 [00:00<00:00, 15.28it/s, v_num=pp5y, train_loss=0.826]Epoch 2:  92%|█████████▏| 11/12 [00:00<00:00, 16.32it/s, v_num=pp5y, train_loss=0.826]Epoch 2:  92%|█████████▏| 11/12 [00:00<00:00, 16.31it/s, v_num=pp5y, train_loss=0.486]Epoch 2: 100%|██████████| 12/12 [00:00<00:00, 17.31it/s, v_num=pp5y, train_loss=0.486]Epoch 2: 100%|██████████| 12/12 [00:00<00:00, 17.30it/s, v_num=pp5y, train_loss=0.543]Epoch 2: 100%|██████████| 12/12 [00:00<00:00, 17.27it/s, v_num=pp5y, train_loss=0.543]
+------------------------------------------------------------
+TRAIN METRICS (TRAIN):
+  MSE:   0.7367
+  MAE:   0.6901
+  RMSE:  0.8583
+  R²:    0.2633
+  MAPE:  2.4862
+  SMAPE: 1.2223
+------------------------------------------------------------
+Epoch 2: 100%|██████████| 12/12 [00:00<00:00, 12.30it/s, v_num=pp5y, train_loss=0.543]
+
+[Fold 4] Testing on 1 future years: [2020]
+
+[DataModule] wheat-NL | DAILY | Spatial=False | Lag=0
+  Static features validated: 9/9
+  Split: Train [], Val [], Test [2020]
+  Years Summary:
+    Train years (0): []
+    Val years (0):   []
+    Test years (1):  [2020]
+  Y norm: mean=8.3669, std=0.9943
+  Feature norm params: 18 features
+  Samples: train=0, val=0, test=12
+Testing: |          | 0/? [00:00<?, ?it/s]Testing: |          | 0/? [00:00<?, ?it/s]Testing DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 50.58it/s]
+------------------------------------------------------------
+TEST METRICS (TEST):
+  MSE:   0.3522
+  MAE:   0.4533
+  RMSE:  0.5934
+  R²:    0.3981
+  MAPE:  0.0576
+  SMAPE: 0.0557
+  NRMSE: 0.0708
+------------------------------------------------------------
+Testing DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 28.17it/s]
+  Year 2020: NRMSE=0.0708, R2=0.3981
+
+[Walk-Forward] CSV Results saved to:
+  Detailed: checkpoints-test/results/wheat_NL_walkforward_20260518_174509_046d534f.csv
+  Aggregated: checkpoints-test/results/wheat_NL_walkforward_aggregated_20260518_174509_046d534f.csv
+
+[Walk-Forward] Overall Average Across All Folds and Years:
+  MSE:   0.7374
+  MAE:   0.7084
+  RMSE:  0.8289
+  R2:    0.0110
+  MAPE:  0.08%
+  SMAPE: 0.08%
+  NRMSE: 0.0956
+
+======================================================================
+WALK-FORWARD VALIDATION COMPLETE
+======================================================================
+
+Results saved to: checkpoints-test/results/wheat_NL_walkforward_20260518_174509_046d534f.csv
+
+======================================================================
+Experiment complete: wheat-NL
+  Model: informer
+  Aggregation: daily
+  Test years: 5
+======================================================================
+
+[1;34mwandb[0m: 
+[1;34mwandb[0m: 🚀 View run [33minformer-wheat-NL-wf[0m at: [34m[0m

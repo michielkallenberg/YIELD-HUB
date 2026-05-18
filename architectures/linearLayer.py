@@ -1,6 +1,5 @@
-import logging
-import os
 import sys
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, List, Tuple
 
@@ -11,7 +10,7 @@ import lightning.pytorch as pl
 
 from torchmetrics import R2Score, MeanSquaredError, MeanAbsoluteError, MeanAbsolutePercentageError
 
-from cybench_compat import (
+from cybench.config import (
     GDD_BASE_TEMP, GDD_UPPER_LIMIT, LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
@@ -34,8 +33,7 @@ SOTA_TEMPORAL_VARS_LIST = [
 
 # Remote sensing features - always included
 REMOTE_SENSING_FEATURES = ['fpar', 'ndvi', 'ssm', 'rsm']
-if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
-    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 
 class BaseTimeSeriesModel(ABC, pl.LightningModule):
@@ -1153,7 +1151,7 @@ class XLinearYieldModel(BaseTimeSeriesModel):
     (Chen et al., AAAI 2026)
 
     Optional RevIN normalization:
-    When config.use_revIN=True, applies Reversible Instance Normalization
+    When config.use_revin=True, applies Reversible Instance Normalization
     to the endogenous series before embedding. This provides per-instance
     normalization (vs. global z-scoring), which can help with distribution
     shift across locations and years.
@@ -1184,7 +1182,7 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         self._effective_seq_len = effective_seq_len
 
         # RevIN for endogenous series normalization (optional)
-        if self.config.use_revIN:
+        if self.config.use_revin:
             self.revin = RevIN(
                 num_features=1,  # endogenous series is 1-dimensional
                 eps=1e-8,
@@ -1273,7 +1271,7 @@ class XLinearYieldModel(BaseTimeSeriesModel):
                     endo = endo * observed_mask.unsqueeze(-1).float()
 
                 # Apply RevIN normalization if enabled
-                if self.config.use_revIN:
+                if self.config.use_revin:
                     endo, _, _ = self.revin(endo, observed_mask)
 
                 return endo
@@ -1282,7 +1280,7 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         endo = x_ts.mean(dim=-1, keepdim=True)
 
         # Apply RevIN normalization if enabled
-        if self.config.use_revIN:
+        if self.config.use_revin:
             endo, _, _ = self.revin(endo, observed_mask)
 
         return endo

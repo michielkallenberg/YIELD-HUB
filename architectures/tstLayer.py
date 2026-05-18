@@ -1,7 +1,6 @@
+import sys
 import logging
 import math
-import os
-import sys
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, List, Tuple
 
@@ -12,7 +11,7 @@ import lightning.pytorch as pl
 
 from torchmetrics import R2Score, MeanSquaredError, MeanAbsoluteError, MeanAbsolutePercentageError
 
-from cybench_compat import (
+from cybench.config import (
     GDD_BASE_TEMP, GDD_UPPER_LIMIT, LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
@@ -85,8 +84,7 @@ SOTA_TEMPORAL_VARS_LIST = [
 
 # Remote sensing features - always included
 REMOTE_SENSING_FEATURES = ['fpar', 'ndvi', 'ssm', 'rsm']
-if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
-    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 class BaseTimeSeriesModel(ABC, pl.LightningModule):
     """

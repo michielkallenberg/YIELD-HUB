@@ -1,12 +1,12 @@
 import os
+import re
 import sys
 import random
 import hashlib
 import logging
-from typing import Union
-
+from typing import Union, Dict, Any, Optional, List, Tuple
+from pathlib import Path
 from dataclasses import fields
-from typing import Optional, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,8 @@ import torch
 from lightning.pytorch import seed_everything
 
 # Custom functions and classes
-sys.path.append('../architectures/')
+_helpers_dir = Path(__file__).parent.resolve()
+sys.path.append(str(_helpers_dir.parent / 'architectures'))
 from modelconfig import TSTModelConfig, LinearModelConfig
 
 
@@ -158,3 +159,65 @@ def save_test_results_to_csv(
         df = df[get_column_order(df.columns)]
         df.to_csv(csv_path, index=False)
         print(f"[CSV Results] Saved {metric} results to {csv_path}")
+
+
+def load_best_hps(results_file: str) -> Dict[str, Any]:
+    """Load best hyperparameters from a single HPO results file."""
+    with open(results_file, 'r') as f:
+        content = f.read()
+
+    match = re.search(
+        r'BEST TRIAL:.*?Hyperparameters:(.*?)ALL TRIALS',
+        content, re.DOTALL
+    )
+
+    if not match:
+        return {}
+
+    hps = {}
+    for line in match.group(1).split('\n'):
+        if ':' in line and not line.strip().startswith('='):
+            key, val = line.split(':', 1)
+            key, val = key.strip(), val.strip()
+            try:
+                hps[key] = int(val) if '.' not in val else float(val)
+            except ValueError:
+                hps[key] = val
+    return hps
+
+
+def load_all_hps(results_dir: str) -> Dict[str, Dict[str, Any]]:
+    """
+    Load all HPO results from directory.
+    Returns dict with keys like 'patchtst-AO-maize' -> hyperparameters
+    """
+    results_path = Path(results_dir)
+    all_hps = {}
+
+    for file_path in results_path.glob("**/*HPO_results*.txt"):
+        folder_name = file_path.parent.parent.name
+        parts = folder_name.replace('hpo_', '').split('_')
+
+        model = parts[0]
+        crop = parts[-1]
+        region = '_'.join(parts[1:-1])
+
+        key = f"{model}-{region}-{crop}"
+        hps = load_best_hps(str(file_path))
+
+        if hps:
+            all_hps[key] = hps
+
+    return all_hps
+
+
+def get_hps_for_model_crop_region(
+    results_dir: str,
+    model: str,
+    crop: str,
+    region: str
+) -> Dict[str, Any]:
+    """Get hyperparameters for a specific model, crop, and region combination."""
+    key = f"{model}-{region}-{crop}"
+    all_hps = load_all_hps(results_dir)
+    return all_hps.get(key, {})

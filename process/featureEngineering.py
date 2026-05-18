@@ -1,5 +1,4 @@
 import logging
-import os
 
 import numpy as np
 import pandas as pd
@@ -8,7 +7,7 @@ from typing import Optional, Dict, List, Tuple
 
 from cybench.datasets.dataset import Dataset as CYDataset
 
-from cybench_compat import (
+from cybench.config import (
     LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
@@ -56,8 +55,7 @@ SOTA_TEMPORAL_VARS_LIST = [
     'season_sin', 'season_cos'
 ]
 
-if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
-    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 # %% Helper functions
 def interpolate_to_daily(data: pd.Series, target_dates: pd.DatetimeIndex,

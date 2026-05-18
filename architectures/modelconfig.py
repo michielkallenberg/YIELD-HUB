@@ -1,10 +1,8 @@
-import os
-
 from typing import Optional, Dict, List, Tuple, Callable
 
 from dataclasses import dataclass
 
-from cybench_compat import (
+from cybench.config import (
     GDD_BASE_TEMP, GDD_UPPER_LIMIT, LOCATION_PROPERTIES, SOIL_PROPERTIES,
     FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
@@ -22,8 +20,8 @@ REMOTE_SENSING_FEATURES = ['fpar', 'ndvi', 'ssm', 'rsm']
 STANDARD_STATIC_VARS = SOIL_PROPERTIES + LOCATION_PROPERTIES
 # CROP_CALENDAR_DATES imported from cybench.config
 
-if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
-    print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
+# based on config.weather_features and config.time_series_vars properties
+print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
 
 @dataclass
 class TSTModelConfig:
@@ -137,7 +135,7 @@ class LinearModelConfig:
     # Feature toggles for ablation studies
     use_cwb_feature: bool = False  # Include crop water balance (redundant with prec+temp)
     drop_tavg: bool = False  # Drop tavg if dataset computes it as (tmin+tmax)/2
-    use_revIN: bool = False  # Use RevIN normalization for XLinear endogenous series
+    use_revin: bool = False  # Use RevIN normalization for XLinear endogenous series
     # Recursive lag prediction for true out-of-sample testing
     use_recursive_lags: bool = False  # Use predicted yields as lags during testing (default: False for backward compat)
     # Domain feature engineering flags
