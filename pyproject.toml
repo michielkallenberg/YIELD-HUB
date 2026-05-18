@@ -13,6 +13,7 @@ authors = [
   { name = "Ambrosia2024" }
 ]
 dependencies = [
+  "fastapi==0.116.1",
   "huggingface-hub==0.34.4",
   "lightning==2.5.4",
   "matplotlib==3.10.1",
@@ -26,9 +27,11 @@ dependencies = [
   "torchmetrics==1.8.1",
   "transformers==4.55.4",
   "tqdm==4.67.1",
+  "uvicorn==0.35.0",
 ]
 
 [project.scripts]
+yield-hub-dashboard = "yield_hub.dashboard:main"
 yield-hub-predict = "yield_hub.cli:main"
 
 [tool.setuptools]

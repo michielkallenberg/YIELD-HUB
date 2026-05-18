@@ -21,6 +21,14 @@ TRANSFORMER_MODELS = {
     "timexer",
     "timesnet",
 }
+LINEAR_MODELS = {
+    "nlinear",
+    "dlinear",
+    "xlinear",
+    "rlinear",
+    "olinear",
+}
+SUPPORTED_MODELS = sorted(TRANSFORMER_MODELS | LINEAR_MODELS)
 
 
 def get_repo_id(model_type: str) -> str:

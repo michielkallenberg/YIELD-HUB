@@ -136,3 +136,20 @@ The package is organized around:
 - `yield_hub.data`: CY-BENCH dataset loading and split setup
 - `yield_hub.predictor`: importable prediction API for apps and dashboards
 - `yield_hub.cli`: command-line entrypoint
+
+# Dashboard
+
+The package also includes a minimal FastAPI dashboard layer on top of
+`yield_hub.Predictor`:
+
+```
+yield-hub-dashboard
+```
+
+Then open `http://127.0.0.1:8000/` and run predictions from the browser.
+
+The dashboard:
+
+- uses the same private Hugging Face access as the CLI
+- prefers local development data under `YIELD-HUB/data/`
+- writes generated prediction CSV files to `wrappers/data/`

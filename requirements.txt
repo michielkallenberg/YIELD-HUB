@@ -1,6 +1,7 @@
 # Core runtime dependencies for packaging, wrappers, and dashboard work.
 # Keep this file focused on direct application dependencies.
 
+fastapi==0.116.1
 huggingface-hub==0.34.4
 lightning==2.5.4
 matplotlib==3.10.1
@@ -14,3 +15,4 @@ torch==2.5.1
 torchmetrics==1.8.1
 transformers==4.55.4
 tqdm==4.67.1
+uvicorn==0.35.0
