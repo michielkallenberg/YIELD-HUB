@@ -10,8 +10,51 @@ import torch
 from lightning.pytorch import Trainer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(REPO_ROOT / "process"))
-sys.path.append(str(REPO_ROOT / "architectures"))
+DEFAULT_CYBENCH_CANDIDATES = [
+    REPO_ROOT.parent / "crop_yield_prediction" / "cybench" / "AgML-CY-BENCH",
+    REPO_ROOT.parent / "AgML-CY-BENCH",
+    REPO_ROOT.parent.parent / "crop_yield_prediction" / "cybench" / "AgML-CY-BENCH",
+]
+
+
+def _load_repo_env() -> None:
+    env_path = REPO_ROOT / ".env"
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("'").strip('"'))
+
+
+def _configure_import_paths() -> None:
+    _load_repo_env()
+
+    sys.path.append(str(REPO_ROOT / "process"))
+    sys.path.append(str(REPO_ROOT / "architectures"))
+
+    cybench_root = os.environ.get("CYBENCH_ROOT")
+    candidates = [Path(cybench_root)] if cybench_root else []
+    candidates.extend(DEFAULT_CYBENCH_CANDIDATES)
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        candidate = Path(candidate).expanduser()
+        if (candidate / "cybench" / "config.py").exists():
+            sys.path.append(str(candidate))
+            return
+
+    raise ModuleNotFoundError(
+        "Could not locate the external CY-BENCH package. Set CYBENCH_ROOT in .env "
+        "to the AgML-CY-BENCH repository root containing cybench/config.py."
+    )
+
+
+_configure_import_paths()
 
 from cybench.config import KEY_YEAR
 from cybench.datasets.configured import load_dfs_crop
