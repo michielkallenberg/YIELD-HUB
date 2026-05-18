@@ -88,3 +88,53 @@ def fetch_config_and_runid(
         "run_id": row["run_id"],
         "row": row,
     }
+
+
+class ModelRegistry:
+    """Discover and fetch available trained model artifacts from Hugging Face."""
+
+    def __init__(self, repo_root: Optional[Path] = None):
+        self.repo_root = repo_root or REPO_ROOT
+
+    def list_models(self, model_type: Optional[str] = None) -> list[dict]:
+        model_types = [model_type] if model_type else SUPPORTED_MODELS
+        rows: list[dict] = []
+        for current_model in model_types:
+            df = load_baseline_table(current_model, self.repo_root)
+            for _, row in df.iterrows():
+                rows.append(
+                    {
+                        "model_type": row["model_type"],
+                        "crop": row["crop"],
+                        "country": row["country"],
+                        "run_id": row["run_id"],
+                        "repo_id": get_repo_id(row["model_type"]),
+                    }
+                )
+        rows.sort(key=lambda item: (item["model_type"], item["crop"], item["country"]))
+        return rows
+
+    def get_entry(self, model_type: str, crop: str, country: str) -> dict:
+        return fetch_config_and_runid(
+            model_type=model_type,
+            crop=crop,
+            country=country,
+            repo_root=self.repo_root,
+        )
+
+    def fetch_model(
+        self,
+        model_type: str,
+        crop: str,
+        country: str,
+        checkpoint_name: Optional[str] = None,
+    ) -> Path:
+        entry = self.get_entry(model_type=model_type, crop=crop, country=country)
+        resolved_checkpoint_name = checkpoint_name or entry["run_id"]
+        return download_checkpoint(
+            model_type=model_type,
+            crop=crop,
+            country=country,
+            checkpoint_name=resolved_checkpoint_name,
+            repo_root=self.repo_root,
+        )

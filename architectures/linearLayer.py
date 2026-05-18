@@ -1,5 +1,6 @@
-import sys
 import logging
+import os
+import sys
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, List, Tuple
 
@@ -33,7 +34,8 @@ SOTA_TEMPORAL_VARS_LIST = [
 
 # Remote sensing features - always included
 REMOTE_SENSING_FEATURES = ['fpar', 'ndvi', 'ssm', 'rsm']
-print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
+    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 
 class BaseTimeSeriesModel(ABC, pl.LightningModule):

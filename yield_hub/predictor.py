@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from lightning.pytorch import Trainer
 
-from .artifacts import TRANSFORMER_MODELS, download_checkpoint, fetch_config_and_runid
+from .artifacts import ModelRegistry, TRANSFORMER_MODELS
 from .settings import REPO_ROOT, configure_runtime_paths
 
 configure_runtime_paths()
@@ -36,10 +36,17 @@ def create_model(model_config):
 class Predictor:
     """High-level prediction API for end-user and dashboard workflows."""
 
-    def __init__(self, repo_root: Optional[Path] = None, cybench_root: Optional[str] = None):
+    def __init__(
+        self,
+        repo_root: Optional[Path] = None,
+        cybench_root: Optional[str] = None,
+        data_root: Optional[str] = None,
+    ):
         self.repo_root = Path(repo_root) if repo_root else REPO_ROOT
         self.cybench_root = cybench_root
+        self.data_root = data_root
         configure_runtime_paths(cybench_root=cybench_root, repo_root=self.repo_root)
+        self.registry = ModelRegistry(repo_root=self.repo_root)
 
     def predict(
         self,
@@ -47,28 +54,23 @@ class Predictor:
         country: str,
         crop: str,
         checkpoint_name: Optional[str] = None,
+        data_root: Optional[str] = None,
     ) -> pd.DataFrame:
-        fetched = fetch_config_and_runid(
-            model_type=model_type,
-            country=country,
-            crop=crop,
-            repo_root=self.repo_root,
-        )
+        fetched = self.registry.get_entry(model_type=model_type, country=country, crop=crop)
         config_dict = fetched["config_dict"]
         resolved_checkpoint_name = checkpoint_name or fetched["run_id"]
-        checkpoint_path = download_checkpoint(
+        checkpoint_path = self.registry.fetch_model(
             model_type=config_dict["model_type"],
             crop=config_dict["crop"],
             country=config_dict["country"],
             checkpoint_name=resolved_checkpoint_name,
-            repo_root=self.repo_root,
         )
 
         model_config = create_model_config(config_dict)
-        dm, _ = build_datamodule(model_config)
+        dm, _ = build_datamodule(model_config, data_root=data_root or self.data_root)
 
         model = create_model(model_config)
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["state_dict"])
         model.eval()
 
@@ -118,11 +120,13 @@ def predict(
     checkpoint_name: Optional[str] = None,
     repo_root: Optional[Path] = None,
     cybench_root: Optional[str] = None,
+    data_root: Optional[str] = None,
 ) -> pd.DataFrame:
-    predictor = Predictor(repo_root=repo_root, cybench_root=cybench_root)
+    predictor = Predictor(repo_root=repo_root, cybench_root=cybench_root, data_root=data_root)
     return predictor.predict(
         model_type=model_type,
         country=country,
         crop=crop,
         checkpoint_name=checkpoint_name,
+        data_root=data_root,
     )

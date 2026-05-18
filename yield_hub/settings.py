@@ -45,11 +45,11 @@ def get_hf_token(repo_root: Optional[Path] = None) -> str:
     return token
 
 
-def resolve_data_root(repo_root: Optional[Path] = None) -> Path:
+def resolve_data_root(data_root: Optional[str] = None, repo_root: Optional[Path] = None) -> Path:
     root = repo_root or REPO_ROOT
     load_repo_env(root)
 
-    configured = os.environ.get("YIELD_HUB_DATA_ROOT")
+    configured = data_root or os.environ.get("YIELD_HUB_DATA_ROOT")
     candidates = [Path(configured).expanduser()] if configured else []
     candidates.append(DEFAULT_LOCAL_DATA_ROOT)
 

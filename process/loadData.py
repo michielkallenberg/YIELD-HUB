@@ -1,5 +1,6 @@
-import sys
 import logging
+import os
+import sys
 from typing import Union
 
 import numpy as np
@@ -43,9 +44,9 @@ SOTA_TEMPORAL_VARS_LIST = [
     'season_sin', 'season_cos'
 ]
 
-# based on config.weather_features and config.time_series_vars properties
-print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
-print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
+    print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
+    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 
 def prepare_features_and_targets(dataset):

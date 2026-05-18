@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 import pandas as pd
@@ -55,7 +56,8 @@ SOTA_TEMPORAL_VARS_LIST = [
     'season_sin', 'season_cos'
 ]
 
-print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
+if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
+    print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {SOTA_TEMPORAL_VARS_LIST}")
 
 # %% Helper functions
 def interpolate_to_daily(data: pd.Series, target_dates: pd.DatetimeIndex,

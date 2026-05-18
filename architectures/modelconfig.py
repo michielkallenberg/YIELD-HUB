@@ -1,3 +1,5 @@
+import os
+
 from typing import Optional, Dict, List, Tuple, Callable
 
 from dataclasses import dataclass
@@ -20,8 +22,8 @@ REMOTE_SENSING_FEATURES = ['fpar', 'ndvi', 'ssm', 'rsm']
 STANDARD_STATIC_VARS = SOIL_PROPERTIES + LOCATION_PROPERTIES
 # CROP_CALENDAR_DATES imported from cybench.config
 
-# based on config.weather_features and config.time_series_vars properties
-print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
+if os.environ.get("YIELD_HUB_DEBUG_IMPORTS") == "1":
+    print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
 
 @dataclass
 class TSTModelConfig:
