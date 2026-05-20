@@ -101,7 +101,7 @@ Usage:
     python tstBaselines.py --crop maize --country NL --model_type tst --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily
 
 # Quick test run (5 epochs)
-    python tstBaselines.py --crop wheat --country NL --model_type timesnet --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later
+    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later
 
 ------------
 Core dependencies:
@@ -234,6 +234,8 @@ if __name__ == "__main__":
                         help='Custom WandB project name (default: CYBENCH-LSTF-AAAI2027)')
     parser.add_argument('--wandb_run_name', default=None,
                         help='Custom WandB run name (default: model_type-crop-country)')
+    parser.add_argument('--run_id', default=None,
+                        help='Custom run ID for checkpoint naming and results tracking (default: auto-generated UUID)')
     # PatchTST-specific hyperparameters (only used when model_type='patchtst')
     parser.add_argument('--patchtst_d_model', type=int, default=64,
                         help='PatchTST: dimension of the transformer hidden states (default: 64)')
@@ -261,7 +263,7 @@ if __name__ == "__main__":
 
     # Generate unique run identifier and timestamp for CSV tracking
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = str(uuid.uuid4())[:8]  # Short unique identifier
+    run_id = args.run_id if args.run_id else str(uuid.uuid4())[:8]  # Use provided run_id or generate short UUID
 
     print(f"\n{'=' * 70}")
     print(f"CY-BENCH  |  {args.model_type.upper()}  |  {args.crop}-{args.country}  "
@@ -365,7 +367,8 @@ if __name__ == "__main__":
     # WandB logger for final model
     try:
         wandb_project = args.wandb_project if args.wandb_project else "CYBENCH-LSTF-AAAI2027"
-        wandb_run_name = args.wandb_run_name if args.wandb_run_name else f"{args.model_type}-{args.crop}-{args.country}"
+        base_run_name = args.wandb_run_name if args.wandb_run_name else f"{args.model_type}-{args.crop}-{args.country}"
+        wandb_run_name = args.run_id and f"{base_run_name}-{run_id}" or base_run_name
         wandb_logger = WandbLogger(
             project=wandb_project,
             name=wandb_run_name,
@@ -491,3 +494,4 @@ if __name__ == "__main__":
     print(f"  Aggregation: {args.aggregation}")
     print(f"  Test years: {fixed_splits['test_years']}")
     print(f"{'=' * 70}\n")
+
