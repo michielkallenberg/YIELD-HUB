@@ -101,7 +101,7 @@ Usage:
     python tstBaselines.py --crop maize --country NL --model_type tst --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily
 
 # Quick test run (5 epochs)
-    python tstBaselines.py --crop wheat --country NL --model_type timesnet --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later
+    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later --save_checkpoint_dir checkpoints-test/results --season_length 0.25
 
 ------------
 Core dependencies:
@@ -181,6 +181,10 @@ if __name__ == "__main__":
                         choices=['autoformer', 'patchtst', 'tsmixer', 'informer', 'tst', 'itransformer', 'timexer', 'timesnet'])
     parser.add_argument('--aggregation', default="dekad",
                         choices=['daily', 'weekly', 'dekad'])
+    parser.add_argument('--season_length', type=float, default=1.0,
+                        choices=[0.25, 0.5, 0.75, 1.0],
+                        help='Fraction of season to use for prediction (default: 1.0 = full season). '
+                             '0.25 = quarter, 0.5 = half, 0.75 = three-quarters, 1.0 = full')
     parser.add_argument('--use_sota_features', action='store_true')
     parser.add_argument('--include_spatial_features', action='store_true')
     parser.add_argument('--lag_years', type=int, default=1, choices=[0, 1, 2],
@@ -234,6 +238,8 @@ if __name__ == "__main__":
                         help='Custom WandB project name (default: CYBENCH-LSTF-AAAI2027)')
     parser.add_argument('--wandb_run_name', default=None,
                         help='Custom WandB run name (default: model_type-crop-country)')
+    parser.add_argument('--run_id', default=None,
+                        help='Custom run ID for checkpoint naming and results tracking (default: auto-generated UUID)')
     # PatchTST-specific hyperparameters (only used when model_type='patchtst')
     parser.add_argument('--patchtst_d_model', type=int, default=64,
                         help='PatchTST: dimension of the transformer hidden states (default: 64)')
@@ -270,7 +276,7 @@ if __name__ == "__main__":
 
     # Generate unique run identifier and timestamp for CSV tracking
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = str(uuid.uuid4())[:8]  # Short unique identifier
+    run_id = args.run_id if args.run_id else str(uuid.uuid4())[:8]  # Use provided run_id or generate short UUID
 
     print(f"\n{'=' * 70}")
     print(f"CY-BENCH WALK-FORWARD  |  {args.model_type.upper()}  |  {args.crop}-{args.country}  "
@@ -297,6 +303,7 @@ if __name__ == "__main__":
     config = TSTModelConfig(
         crop=args.crop, country=args.country,
         model_type=args.model_type, aggregation=args.aggregation,
+        season_length=args.season_length,
         use_sota_features=args.use_sota_features,
         include_spatial_features=args.include_spatial_features,
         lag_years=args.lag_years,
@@ -382,6 +389,30 @@ if __name__ == "__main__":
     print(f"WALK-FORWARD VALIDATION COMPLETE")
     print(f"{'=' * 70}")
     print(f"\nResults saved to: {wf_results['csv_path']}")
+
+    # DEBUG: Print per-year breakdown from aggregated results
+    if 'per_year_metrics' in wf_results:
+        print(f"\n[DEBUG] Per-year metrics (from all folds):")
+        for year in sorted(wf_results['per_year_metrics'].keys()):
+            r2 = wf_results['per_year_metrics'][year].get('r2')
+            nrmse = wf_results['per_year_metrics'][year].get('nrmse')
+            print(f"  Year {year}: R2={r2:.4f}, NRMSE={nrmse:.4f}")
+
+    # Print average performance of 1st test year only (using pre-calculated metrics)
+    if wf_results.get('first_year_metrics'):
+        print(f"\n{'=' * 70}")
+        print(f"AVERAGE PERFORMANCE - 1ST TEST YEAR ONLY")
+        print(f"{'=' * 70}")
+        first_year_metrics = wf_results['first_year_metrics']
+        for metric_name in ['mse', 'mae', 'rmse', 'r2', 'mape', 'smape', 'nrmse']:
+            value = first_year_metrics.get(metric_name)
+            std_val = first_year_metrics.get(f'{metric_name}_std', 0.0)
+            if value is not None:
+                if metric_name in ['mape', 'smape']:
+                    print(f"  {metric_name.upper()}: {value:.2f}% (+/- {std_val:.2f}%)")
+                else:
+                    print(f"  {metric_name.upper()}: {value:.4f} (+/- {std_val:.4f})")
+        print(f"{'=' * 70}\n")
 
     # Print experiment completion message
     print(f"\n{'=' * 70}")

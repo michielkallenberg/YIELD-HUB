@@ -30,6 +30,7 @@ class TSTModelConfig:
     country: str = "NL"
     model_type: str = "autoformer"
     aggregation: str = "dekad"
+    season_length: float = 1.0  # Fraction of season to use (0.25, 0.5, 0.75, 1.0)
     use_sota_features: bool = False
     include_spatial_features: bool = False
     use_residual_trend: bool = True
@@ -120,6 +121,7 @@ class LinearModelConfig:
     country: str = "NL"
     model_type: str = "nlinear"
     aggregation: str = "dekad"
+    season_length: float = 1.0  # Fraction of season to use (0.25, 0.5, 0.75, 1.0)
     use_sota_features: bool = False
     include_spatial_features: bool = False
     use_residual_trend: bool = True

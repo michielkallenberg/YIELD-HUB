@@ -348,13 +348,18 @@ def save_walk_forward_results(
     )
     per_year_agg.to_csv(agg_path, index=False)
 
-    # Calculate overall averages
-    overall_avg = df[metric_cols].mean()
+    # Calculate overall averages - average of per-year averages (not simple mean of all predictions)
+    # This ensures each year contributes equally regardless of how many folds predicted it
+    overall_avg = {}
+    for col in metric_cols:
+        mean_col = f'{col}_mean'
+        if mean_col in per_year_agg.columns:
+            overall_avg[col] = per_year_agg[mean_col].mean()
 
     print(f"\n[Walk-Forward] CSV Results saved to:")
     print(f"  Detailed: {csv_path}")
     print(f"  Aggregated: {agg_path}")
-    print(f"\n[Walk-Forward] Overall Average Across All Folds and Years:")
+    print(f"\n[Walk-Forward] Overall Average (average of per-year means):")
     print(f"  MSE:   {overall_avg['mse']:.4f}")
     print(f"  MAE:   {overall_avg['mae']:.4f}")
     print(f"  RMSE:  {overall_avg['rmse']:.4f}")
@@ -537,6 +542,7 @@ def run_walk_forward_validation(
         'results_matrix': results_matrix,
         'overall_metrics': aggregated['overall'],
         'per_year_metrics': aggregated['per_year'],
+        'first_year_metrics': aggregated.get('first_year'),
         'csv_path': csv_path,
     }
 
@@ -584,33 +590,34 @@ def _update_config_for_fold(config, train_years, max_epochs):
 
 
 def _aggregate_walk_forward_results(results_matrix: List[Dict], all_years: List[int], test_years: int) -> Dict:
-    """Aggregate walk-forward results into overall and per-year metrics."""
+    """Aggregate walk-forward results into overall and per-year metrics.
+
+    The overall average is calculated as the mean of per-year averages,
+    giving equal weight to each year regardless of how many folds predicted it.
+    """
     # Collect all metric values
-    all_metric_values = {m: [] for m in ['mse', 'mae', 'rmse', 'r2', 'mape', 'smape', 'nrmse']}
     per_year_values = {}
+    first_year_values = {m: [] for m in ['mse', 'mae', 'rmse', 'r2', 'mape', 'smape', 'nrmse']}
 
     for fold_result in results_matrix:
+        train_end_year = fold_result['train_end_year']
+        first_test_year = train_end_year + 1
+
         for test_year, metrics in fold_result['yearly_metrics'].items():
+            # Track per-year values
+            if test_year not in per_year_values:
+                per_year_values[test_year] = {m: [] for m in ['mse', 'mae', 'rmse', 'r2', 'mape', 'smape', 'nrmse']}
             for metric_name, value in metrics.items():
                 if value is not None:
-                    all_metric_values[metric_name].append(value)
-
-                    # Track per-year values
-                    if test_year not in per_year_values:
-                        per_year_values[test_year] = {m: [] for m in all_metric_values}
                     per_year_values[test_year][metric_name].append(value)
 
-    # Calculate overall averages
-    overall = {}
-    for metric_name, values in all_metric_values.items():
-        if values:
-            overall[metric_name] = np.mean(values)
-            overall[f'{metric_name}_std'] = np.std(values)
-        else:
-            overall[metric_name] = None
-            overall[f'{metric_name}_std'] = None
+            # Track first test year values (train_end_year + 1)
+            if test_year == first_test_year:
+                for metric_name, value in metrics.items():
+                    if value is not None:
+                        first_year_values[metric_name].append(value)
 
-    # Calculate per-year averages
+    # Calculate per-year averages first
     per_year = {}
     for year, metrics_dict in sorted(per_year_values.items()):
         per_year[year] = {}
@@ -622,21 +629,55 @@ def _aggregate_walk_forward_results(results_matrix: List[Dict], all_years: List[
                 per_year[year][metric_name] = None
                 per_year[year][f'{metric_name}_std'] = None
 
-    return {'overall': overall, 'per_year': per_year}
+    # Calculate overall averages as mean of per-year averages (equal weight per year)
+    overall = {}
+    for metric_name in ['mse', 'mae', 'rmse', 'r2', 'mape', 'smape', 'nrmse']:
+        year_values = [per_year[y][metric_name] for y in per_year if per_year[y][metric_name] is not None]
+        if year_values:
+            overall[metric_name] = np.mean(year_values)
+            overall[f'{metric_name}_std'] = np.std(year_values)
+        else:
+            overall[metric_name] = None
+            overall[f'{metric_name}_std'] = None
+
+    # Calculate first test year averages
+    first_year = {}
+    for metric_name in ['mse', 'mae', 'rmse', 'r2', 'mape', 'smape', 'nrmse']:
+        if first_year_values[metric_name]:
+            first_year[metric_name] = np.mean(first_year_values[metric_name])
+            first_year[f'{metric_name}_std'] = np.std(first_year_values[metric_name])
+        else:
+            first_year[metric_name] = None
+            first_year[f'{metric_name}_std'] = None
+
+    return {'overall': overall, 'per_year': per_year, 'first_year': first_year}
 
 
 def _log_walk_forward_to_wandb(loggers: List, aggregated: Dict, run_id: str):
-    """Log walk-forward aggregated metrics to WandB."""
+    """Log walk-forward aggregated metrics to WandB.
+
+    Logs both overall averages and first-test-year-only averages.
+    """
     for logger in loggers:
         if hasattr(logger, 'experiment'):  # WandB logger
             metrics_to_log = {
                 'walk_forward/run_id': run_id,
             }
+            # Log overall metrics
             for metric_name, value in aggregated['overall'].items():
                 if value is not None and not metric_name.endswith('_std'):
                     metrics_to_log[f'walk_forward/{metric_name}'] = value
                     std_key = f'{metric_name}_std'
                     if std_key in aggregated['overall']:
                         metrics_to_log[f'walk_forward/{metric_name}_std'] = aggregated['overall'][std_key]
+
+            # Log first test year only metrics
+            if 'first_year' in aggregated:
+                for metric_name, value in aggregated['first_year'].items():
+                    if value is not None and not metric_name.endswith('_std'):
+                        metrics_to_log[f'walk_forward/first_year/{metric_name}'] = value
+                        std_key = f'{metric_name}_std'
+                        if std_key in aggregated['first_year']:
+                            metrics_to_log[f'walk_forward/first_year/{metric_name}_std'] = aggregated['first_year'][std_key]
 
             logger.experiment.log(metrics_to_log)

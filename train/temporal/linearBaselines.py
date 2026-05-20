@@ -182,6 +182,10 @@ if __name__ == "__main__":
                         choices=['nlinear', 'dlinear', 'xlinear', 'rlinear', 'olinear'])
     parser.add_argument('--aggregation', default="dekad",
                         choices=['daily', 'weekly', 'dekad'])
+    parser.add_argument('--season_length', type=float, default=1.0,
+                        choices=[0.25, 0.5, 0.75, 1.0],
+                        help='Fraction of season to use for prediction (default: 1.0 = full season). '
+                             '0.25 = quarter, 0.5 = half, 0.75 = three-quarters, 1.0 = full')
     parser.add_argument('--use_sota_features', action='store_true')
     parser.add_argument('--include_spatial_features', action='store_true')
     parser.add_argument('--lag_years', type=int, default=1, choices=[0, 1, 2],
@@ -286,6 +290,7 @@ if __name__ == "__main__":
     config = LinearModelConfig(
         crop=args.crop, country=args.country,
         model_type=args.model_type, aggregation=args.aggregation,
+        season_length=args.season_length,
         use_sota_features=args.use_sota_features,
         include_spatial_features=args.include_spatial_features,
         lag_years=args.lag_years,
@@ -501,4 +506,3 @@ if __name__ == "__main__":
     print(f"  Aggregation: {args.aggregation}")
     print(f"  Test years: {fixed_splits['test_years']}")
     print(f"{'=' * 70}\n")
-

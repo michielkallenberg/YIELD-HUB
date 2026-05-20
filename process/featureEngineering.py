@@ -394,12 +394,19 @@ def _compute_heat_stress_counts(tavg_series: np.ndarray,
     }
 
 def _get_aggregation_params(aggregation: str, year: int,
-                             crop_season_info=None) -> Tuple[pd.DatetimeIndex, int, str]:
+                             crop_season_info=None, season_length: float = 1.0) -> Tuple[pd.DatetimeIndex, int, str]:
     """
     Return target DatetimeIndex, sequence length, and frequency string.
 
     Fragile period-then-filter approach replaced with date-range-first approach.
     Leap day filtering now happens before period trimming to prevent off-by-one errors.
+
+    Args:
+        aggregation: Temporal aggregation ('daily', 'weekly', 'dekad')
+        year: Year to generate dates for
+        crop_season_info: Dictionary with 'cutoff_date' and optional 'sos_date'
+        season_length: Fraction of season to use (0.25, 0.5, 0.75, 1.0). Default 1.0 (full season).
+                      Keeps the first N% of the season from SOS onwards.
     """
     freq_map = {"daily": (DAILY_FREQ, 365), "weekly": (WEEKLY_FREQ, 52), "dekad": (DEKAD_FREQ, 36)}
     if aggregation not in freq_map:
@@ -426,10 +433,18 @@ def _get_aggregation_params(aggregation: str, year: int,
     # Trim to max allowed length from the END (most recent dates)
     target_dates = target_dates[-default_len:]
 
+    # Apply season_length truncation for in-season prediction
+    # Keep the FIRST season_length fraction of the season (from SOS onwards)
+    if season_length < 1.0:
+        n_keep = max(1, int(len(target_dates) * season_length))
+        target_dates = target_dates[:n_keep]
+        logging.debug(f"Season length {season_length}: keeping {n_keep}/{len(target_dates)} dates")
+
     # Validate: warn if we got significantly fewer dates than expected
-    if len(target_dates) < default_len * 0.8:
+    expected_len = int(default_len * season_length)
+    if len(target_dates) < expected_len * 0.8:
         logging.warning(
-            f"[{aggregation}] Year {year}: expected ~{default_len} periods, "
+            f"[{aggregation}] Year {year}: expected ~{expected_len} periods (season_length={season_length}), "
             f"got {len(target_dates)}. Check crop_season_info bounds."
         )
 
@@ -922,6 +937,7 @@ def _assemble_features(features: Dict, seq_len: int,
 def build_daily_input_sequence(
         dataset: CYDataset, adm_id: str, year: int,
         aggregation: str = "dekad",
+        season_length: float = 1.0,
         use_sota_features: bool = False,
         include_spatial_features: bool = False,
         lag_years: int = 0,
@@ -942,6 +958,7 @@ def build_daily_input_sequence(
         adm_id: Administrative region ID
         year: Year to extract data for
         aggregation: Temporal aggregation ('daily', 'weekly', 'dekad')
+        season_length: Fraction of season to use (0.25, 0.5, 0.75, 1.0). Default 1.0 (full season)
         use_sota_features: Include SOTA temporal features
         include_spatial_features: Include explicit lat/lon features
         lag_years: Number of lagged yield features (max 2)
@@ -978,7 +995,7 @@ def build_daily_input_sequence(
             (adm_id, year) in dataset._dfs_x["crop_season"].index):
         crop_season_info = dataset._dfs_x["crop_season"].loc[(adm_id, year)]
 
-    target_dates, seq_len, freq_str = _get_aggregation_params(aggregation, year, crop_season_info)
+    target_dates, seq_len, freq_str = _get_aggregation_params(aggregation, year, crop_season_info, season_length)
 
     features = {}
 

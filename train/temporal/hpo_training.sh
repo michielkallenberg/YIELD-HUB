@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=cybench_final_training
 #SBATCH --time=48:00:00
-#SBATCH -p gpu_h100
+#SBATCH -p gpu_a100
 #SBATCH -n 1
 #SBATCH --gpus=1
 #SBATCH --mail-type=END,FAIL
@@ -16,6 +16,10 @@ export CUDA_VISIBLE_DEVICES=0
 echo "Running on node: $(hostname)"
 echo "Start time: $(date)"
 
+# Generate unique run ID (timestamp-based for traceability)
+RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
+echo "Run ID: $RUN_ID"
+
 MIN_YEARS=8
 EXCLUDED_COUNTRIES=""
 
@@ -28,6 +32,7 @@ YEARS_DICT=$(cat <<'EOF'
     'BE': [2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
     'BF': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2016, 2017, 2018, 2019],
     'BG': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
+    'BR': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023],
     'CN': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022],
     'CZ': [2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
     'DE': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021],
@@ -60,6 +65,7 @@ YEARS_DICT=$(cat <<'EOF'
     'SK': [2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018],
     'SN': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015],
     'TD': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017],
+    'US': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023],
     'ZA': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022],
     'ZM': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017]},
 'wheat': {
@@ -68,6 +74,7 @@ YEARS_DICT=$(cat <<'EOF'
     'AU': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023],
     'BE': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
     'BG': [2010, 2011, 2012, 2013, 2014, 2016, 2017, 2018, 2019, 2020],
+    'BR': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022],
     'CN': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022],
     'CZ': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
     'DE': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021],
@@ -89,7 +96,8 @@ YEARS_DICT=$(cat <<'EOF'
     'PT': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
     'RO': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
     'SE': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020],
-    'SK': [2017, 2018]}}
+    'SK': [2017, 2018],
+    'US': [2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]}}
 EOF
 )
 
@@ -101,7 +109,16 @@ while IFS='|' read -r crop country; do
     elif [ "$crop" = "wheat" ]; then WHEAT_COUNTRIES[$country]=1
     fi
 done < <(python3 -c "
+import sys
+import os
+
+# Suppress module-level debug output
+sys.stdout = open(os.devnull, 'w')
 import ast
+
+# Restore stdout for actual output
+sys.stdout.close()
+sys.stdout = sys.__stdout__
 
 data = ast.literal_eval('''$YEARS_DICT''')
 MIN_YEARS = $MIN_YEARS
@@ -119,7 +136,8 @@ echo "  EXCLUDED_COUNTRIES: $EXCLUDED_COUNTRIES"
 echo "  Maize countries: $(echo ${!MAIZE_COUNTRIES[@]} | tr ' ' '\n' | sort | tr '\n' ' ')"
 echo "  Wheat countries: $(echo ${!WHEAT_COUNTRIES[@]} | tr ' ' '\n' | sort | tr '\n' ' ')"
 
-#  helpers 
+# ── helpers ───────────────────────────────────────────────────────────────────
+
 get_patchtst_flags() {
     local crop=$1
     if [ "$crop" = "wheat" ]; then
@@ -130,7 +148,7 @@ get_patchtst_flags() {
 }
 
 get_xlinear_flags() {
-    echo "--use_gdd --use_rue --use_farquhar --use_sota_features --include_spatial_features --use_heat_stress_days --lag_years 2 --use_revIN"
+    echo "--use_gdd --use_rue --use_farquhar --use_sota_features --include_spatial_features --use_heat_stress_days --lag_years 2 --use_revin"
 }
 
 get_best_hps() {
@@ -139,8 +157,16 @@ get_best_hps() {
     local raw_output
     raw_output=$(python3 -c "
 import sys
-sys.path.insert(0, '../process')
+import os
+
+# Suppress module-level debug output
+sys.stdout = open(os.devnull, 'w')
+sys.path.insert(0, '../../process')
 from helpers import load_best_hps
+
+# Restore stdout for actual output
+sys.stdout.close()
+sys.stdout = sys.__stdout__
 
 hps = load_best_hps('$results_file')
 if not hps:
@@ -152,6 +178,114 @@ for k, v in hps.items():
     readarray -t out_array <<< "$raw_output"
 }
 
+get_override_hps() {
+    local model=$1
+    local crop=$2
+    local country=$3
+    local -n out_array=$4
+
+    if [ "$country" = "US" ] || [ "$country" = "BR" ]; then
+        if [ "$model" = "patchtst" ] && [ "$crop" = "maize" ] && [ "$country" = "US" ]; then
+            out_array=(
+                "--patchtst_d_model" "128"
+                "--patchtst_num_attention_heads" "8"
+                "--patchtst_ffn_dim" "1024"
+                "--patchtst_num_layers" "8"
+                "--patchtst_dropout" "0.226374207340905"
+                "--batch_size" "64"
+                "--lr" "0.00021286999594907522"
+                "--weight_decay" "2.0484529270261538e-05"
+                "--seed" "1111"
+            )
+        elif [ "$model" = "patchtst" ] && [ "$crop" = "wheat" ] && [ "$country" = "US" ]; then
+            out_array=(
+                "--patchtst_d_model" "64"
+                "--patchtst_num_attention_heads" "8"
+                "--patchtst_ffn_dim" "256"
+                "--patchtst_num_layers" "6"
+                "--patchtst_dropout" "0.07551339306583449"
+                "--batch_size" "32"
+                "--lr" "7.861321845333725e-05"
+                "--weight_decay" "1.5852570508768146e-06"
+                "--seed" "5555"
+            )
+        elif [ "$model" = "patchtst" ] && [ "$crop" = "maize" ] && [ "$country" = "BR" ]; then
+            out_array=(
+                "--patchtst_d_model" "64"
+                "--patchtst_num_attention_heads" "4"
+                "--patchtst_ffn_dim" "256"
+                "--patchtst_num_layers" "3"
+                "--patchtst_dropout" "0.1"
+                "--batch_size" "16"
+                "--lr" "0.0001"
+                "--weight_decay" "1e-05"
+                "--seed" "42"
+            )
+        elif [ "$model" = "patchtst" ] && [ "$crop" = "wheat" ] && [ "$country" = "BR" ]; then
+            out_array=(
+                "--patchtst_d_model" "32"
+                "--patchtst_num_attention_heads" "16"
+                "--patchtst_ffn_dim" "128"
+                "--patchtst_num_layers" "6"
+                "--patchtst_dropout" "0.29463719227889157"
+                "--batch_size" "16"
+                "--lr" "0.0004929686671539036"
+                "--weight_decay" "1.3850847658133282e-05"
+                "--seed" "1111"
+            )
+        elif [ "$model" = "xlinear" ] && [ "$crop" = "maize" ] && [ "$country" = "US" ]; then
+            out_array=(
+                "--xlinear_hidden_size" "128"
+                "--xlinear_temporal_ff" "128"
+                "--xlinear_channel_ff" "64"
+                "--xlinear_dropout" "0.27858287884282074"
+                "--batch_size" "64"
+                "--lr" "0.000458730339936353"
+                "--weight_decay" "1.2783736085400551e-05"
+                "--seed" "100"
+            )
+        elif [ "$model" = "xlinear" ] && [ "$crop" = "wheat" ] && [ "$country" = "US" ]; then
+            out_array=(
+                "--xlinear_hidden_size" "64"
+                "--xlinear_temporal_ff" "64"
+                "--xlinear_channel_ff" "8"
+                "--xlinear_dropout" "0.44554331375563255"
+                "--batch_size" "32"
+                "--lr" "6.103925184472191e-05"
+                "--weight_decay" "5.8262862936685296e-05"
+                "--seed" "1111"
+            )
+        elif [ "$model" = "xlinear" ] && [ "$crop" = "maize" ] && [ "$country" = "BR" ]; then
+            out_array=(
+                "--xlinear_hidden_size" "32"
+                "--xlinear_temporal_ff" "128"
+                "--xlinear_channel_ff" "64"
+                "--xlinear_dropout" "0.40907877520203867"
+                "--batch_size" "16"
+                "--lr" "0.00047051493707484144"
+                "--weight_decay" "1.066411467206695e-06"
+                "--seed" "5555"
+            )
+        elif [ "$model" = "xlinear" ] && [ "$crop" = "wheat" ] && [ "$country" = "BR" ]; then
+            out_array=(
+                "--xlinear_hidden_size" "128"
+                "--xlinear_temporal_ff" "64"
+                "--xlinear_channel_ff" "64"
+                "--xlinear_dropout" "0.22425153841247014"
+                "--batch_size" "128"
+                "--lr" "0.00036225288317906414"
+                "--weight_decay" "7.93191353304851e-06"
+                "--seed" "1111"
+            )
+        else
+            return 1
+        fi
+        return 0
+    else
+        return 1
+    fi
+}
+
 get_countries_for_crop() {
     local crop=$1
     if   [ "$crop" = "maize" ]; then echo "${!MAIZE_COUNTRIES[@]}"
@@ -161,8 +295,9 @@ get_countries_for_crop() {
 
 sort_countries() { echo "$1" | tr ' ' '\n' | sort | tr '\n' ' '; }
 
-#  parallelism semaphore 
-MAX_PARALLEL=4
+# ── parallelism semaphore ─────────────────────────────────────────────────────
+
+MAX_PARALLEL=2
 PIPE=$(mktemp -u)
 mkfifo "$PIPE"
 exec 3<>"$PIPE"
@@ -180,9 +315,11 @@ run_model() {
     } &
 }
 
-#  final training 
+# ── final training ────────────────────────────────────────────────────────────
 
-mkdir -p modelCheckpoints/final log/final
+# Use same directory for checks and saves
+CHECKPOINT_DIR="modelCheckpoints/final"
+mkdir -p "$CHECKPOINT_DIR" log/final
 
 crops=("wheat" "maize")
 
@@ -191,27 +328,34 @@ for crop in "${crops[@]}"; do
     for country in $countries; do
         for model in patchtst xlinear; do
 
-            results_dir="modelCheckpoints/results/besthpo_${model}_${country}_${crop}/HPO"
-            results_file=$(ls -t "${results_dir}"/*_HPO_results_*.txt 2>/dev/null | head -n 1)
-
-            if [ -z "$results_file" ] || [ ! -s "$results_file" ]; then
-                echo "WARNING: No valid HPO results for ${model} ${country} ${crop} — skipping"
-                continue
-            fi
-
-            final_checkpoint="modelCheckpoints/final/yield-${model}/${country}/${crop}/best_model.pth"
-            if [ -f "$final_checkpoint" ]; then
-                echo "Skipping ${model} ${country} ${crop} (already done)"
+            # Check if checkpoint with this run_id already exists
+            checkpoint_save_dir="${CHECKPOINT_DIR}/yield-${model}/${country}/${crop}/"
+            existing_checkpoint=$(find "$checkpoint_save_dir" -name "*runid:${RUN_ID}.ckpt" 2>/dev/null | head -n 1)
+            if [ -n "$existing_checkpoint" ]; then
+                echo "Skipping ${model} ${country} ${crop} (run_id ${RUN_ID} already done)"
                 continue
             fi
 
             hps_args=()
-            if ! get_best_hps "$results_file" hps_args || [ ${#hps_args[@]} -eq 0 ]; then
-                echo "ERROR: Could not load HPS for ${model} ${country} ${crop} — skipping"
-                continue
+            # Try override for US/BR first, then fall back to HPO results
+            if get_override_hps "$model" "$crop" "$country" hps_args; then
+                echo "Using override HPS for ${model} ${country} ${crop}"
+            else
+                results_dir="../modelCheckpoints/results/hpo_${model}_${country}_${crop}/HPO"
+                results_file=$(ls -t "${results_dir}"/*_HPO_results_*.txt 2>/dev/null | head -n 1)
+
+                if [ -z "$results_file" ] || [ ! -s "$results_file" ]; then
+                    echo "WARNING: No valid HPO results for ${model} ${country} ${crop} — skipping"
+                    continue
+                fi
+
+                if ! get_best_hps "$results_file" hps_args || [ ${#hps_args[@]} -eq 0 ]; then
+                    echo "ERROR: Could not load HPS for ${model} ${country} ${crop} — skipping"
+                    continue
+                fi
             fi
 
-            echo "Starting final training: ${model} ${country} ${crop}"
+            echo "Starting final training: ${model} ${country} ${crop} (run_id: ${RUN_ID})"
 
             if [ "$model" = "patchtst" ]; then
                 script="tstBaselines.py"
@@ -231,13 +375,14 @@ for crop in "${crops[@]}"; do
                 --use_cwb_feature
                 --test_years 5
                 "${model_flags[@]}"
-                --drop_tavg
                 "${hps_args[@]}"
-                --save_checkpoint_dir "modelCheckpoints/final/yield-${model}/${country}/${crop}/"
+                --save_checkpoint_dir "$checkpoint_save_dir"
+                --wandb_project "AAAI2027-CYP-HPO"
+                --run_id "$RUN_ID"
             )
 
             run_model \
-                "log/final/final_${model}_${country}_${crop}.txt" \
+                "log/final_${RUN_ID}_${model}_${country}_${crop}.txt" \
                 "${cmd[@]}"
 
         done
@@ -246,3 +391,5 @@ done
 
 wait
 echo "Final training completed: $(date)"
+
+

@@ -101,7 +101,7 @@ Usage:
     python tstBaselines.py --crop maize --country NL --model_type tst --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily
 
 # Quick test run (5 epochs)
-    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later
+    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 5 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --save_checkpoint_dir checkpoints-test/results --wandb_project test-and-delete-later --season_length 0.25
 
 ------------
 Core dependencies:
@@ -116,6 +116,25 @@ Core dependencies:
 Internal dependencies:
     - cybench.datasets: Agricultural data loading utilities
     - cybench.config: Domain constants and configurations
+
+    
+-----------------
+Delete later:
+Xlinear maize RO : {'xlinear_hidden_size': 64, 'xlinear_temporal_ff': 512, 'xlinear_channel_ff': 64, 'xlinear_dropout': 0.2506545896485766, 'batch_size': 32, 'lr': 0.00030604957662690483, 'weight_decay': 1.6538151422831823e-05, 'seed': 1111}
+Patchtst maize RO : {'patchtst_d_model': 128, 'patchtst_num_attention_heads': 4, 'patchtst_ffn_dim': 1024, 'patchtst_num_layers': 2, 'patchtst_dropout': 0.35192643621081765, 'batch_size': 128, 'lr': 7.148063741699565e-05, 'weight_decay': 3.4438703223229104e-05, 'seed': 42}
+Patchtst maize MZ : {'patchtst_d_model': 32, 'patchtst_num_attention_heads': 8, 'patchtst_ffn_dim': 1024, 'patchtst_num_layers': 8, 'patchtst_dropout': 0.013356614759907404, 'batch_size': 128, 'lr': 6.045717754133162e-05, 'weight_decay': 4.0369499572541056e-05, 'seed': 500}
+Patchtst maize SE : {'patchtst_d_model': 256, 'patchtst_num_attention_heads': 8, 'patchtst_ffn_dim': 256, 'patchtst_num_layers': 6, 'patchtst_dropout': 0.49277479612863245, 'batch_size': 128, 'lr': 7.59535835090581e-05, 'weight_decay': 2.506064507133982e-06, 'seed': 500}
+Patchtst wheat HU : {'patchtst_d_model': 128, 'patchtst_num_attention_heads': 4, 'patchtst_ffn_dim': 128, 'patchtst_num_layers': 3, 'patchtst_dropout': 0.07034048257666378, 'batch_size': 128, 'lr': 6.690501087636328e-05, 'weight_decay': 4.833888077442372e-05, 'seed': 100}
+Patchtst wheat ES : {'patchtst_d_model': 32, 'patchtst_num_attention_heads': 4, 'patchtst_ffn_dim': 512, 'patchtst_num_layers': 2, 'patchtst_dropout': 0.4700021269566644, 'batch_size': 128, 'lr': 0.00011280360361215094, 'weight_decay': 6.687085229387635e-05, 'seed': 500}
+Xlinear wheat DE : {'xlinear_hidden_size': 256, 'xlinear_temporal_ff': 128, 'xlinear_channel_ff': 32, 'xlinear_dropout': 0.44560983407261656, 'batch_size': 128, 'lr': 7.824839837189358e-05, 'weight_decay': 7.762045076791971e-05, 'seed': 5555}
+PatchTST maize US : {'patchtst_d_model': 128, 'patchtst_num_attention_heads': 8, 'patchtst_ffn_dim': 1024, 'patchtst_num_layers': 8, 'patchtst_dropout': 0.226374207340905, 'batch_size': 64, 'lr': 0.00021286999594907522, 'weight_decay': 2.0484529270261538e-05, 'seed': 1111}
+PatchTST wheat US : {'patchtst_d_model': 64, 'patchtst_num_attention_heads': 8, 'patchtst_ffn_dim': 256, 'patchtst_num_layers': 6, 'patchtst_dropout': 0.07551339306583449, 'batch_size': 32, 'lr': 7.861321845333725e-05, 'weight_decay': 1.5852570508768146e-06, 'seed': 5555}
+PatchTST maize BR : {'patchtst_d_model': 64, 'patchtst_num_attention_heads': 4, 'patchtst_ffn_dim': 256, 'patchtst_num_layers': 3, 'patchtst_dropout': 0.1, 'batch_size': 16, 'lr': 0.0001, 'weight_decay': 1e-05, 'seed': 42}
+PatchTST wheat BR : {'patchtst_d_model': 32, 'patchtst_num_attention_heads': 16, 'patchtst_ffn_dim': 128, 'patchtst_num_layers': 6, 'patchtst_dropout': 0.29463719227889157, 'batch_size': 16, 'lr': 0.0004929686671539036, 'weight_decay': 1.3850847658133282e-05, 'seed': 1111}
+Xlinear maize US : {'xlinear_hidden_size': 128, 'xlinear_temporal_ff': 128, 'xlinear_channel_ff': 64, 'xlinear_dropout': 0.27858287884282074, 'batch_size': 64, 'lr': 0.000458730339936353, 'weight_decay': 1.2783736085400551e-05, 'seed': 100}
+Xlinear wheat US : {'xlinear_hidden_size': 64, 'xlinear_temporal_ff': 64, 'xlinear_channel_ff': 8, 'xlinear_dropout': 0.44554331375563255, 'batch_size': 32, 'lr': 6.103925184472191e-05, 'weight_decay': 5.8262862936685296e-05, 'seed': 1111}
+Xlinear maize BR : {'xlinear_hidden_size': 32, 'xlinear_temporal_ff': 128, 'xlinear_channel_ff': 64, 'xlinear_dropout': 0.40907877520203867, 'batch_size': 16, 'lr': 0.00047051493707484144, 'weight_decay': 1.066411467206695e-06, 'seed': 5555}
+Xlinear wheat BR : {'xlinear_hidden_size': 128, 'xlinear_temporal_ff': 64, 'xlinear_channel_ff': 64, 'xlinear_dropout': 0.22425153841247014, 'batch_size': 128, 'lr': 0.00036225288317906414, 'weight_decay': 7.93191353304851e-06, 'seed': 1111}
 """
 
 # %% Loading libraries
@@ -181,6 +200,10 @@ if __name__ == "__main__":
                         choices=['autoformer', 'patchtst', 'tsmixer', 'informer', 'tst', 'itransformer', 'timexer', 'timesnet'])
     parser.add_argument('--aggregation', default="dekad",
                         choices=['daily', 'weekly', 'dekad'])
+    parser.add_argument('--season_length', type=float, default=1.0,
+                        choices=[0.25, 0.5, 0.75, 1.0],
+                        help='Fraction of season to use for prediction (default: 1.0 = full season). '
+                             '0.25 = quarter, 0.5 = half, 0.75 = three-quarters, 1.0 = full')
     parser.add_argument('--use_sota_features', action='store_true')
     parser.add_argument('--include_spatial_features', action='store_true')
     parser.add_argument('--lag_years', type=int, default=1, choices=[0, 1, 2],
@@ -288,6 +311,7 @@ if __name__ == "__main__":
     config = TSTModelConfig(
         crop=args.crop, country=args.country,
         model_type=args.model_type, aggregation=args.aggregation,
+        season_length=args.season_length,
         use_sota_features=args.use_sota_features,
         include_spatial_features=args.include_spatial_features,
         lag_years=args.lag_years,
@@ -494,4 +518,3 @@ if __name__ == "__main__":
     print(f"  Aggregation: {args.aggregation}")
     print(f"  Test years: {fixed_splits['test_years']}")
     print(f"{'=' * 70}\n")
-
