@@ -129,8 +129,8 @@ class TrendModel:
                             len(gt) < self.MIN_TREND_WINDOW_SIZE):
                         trend = sel[KEY_TARGET].mean()
                     else:
-                        # FIXED: Interpolate between backward and forward trends instead of cascading
-                        # This gives better estimates when test year falls between training data blocks
+                        # Interpolate between backward and forward trends instead of cascading
+                        # provides better estimates when test year falls between training data blocks
                         lt_trend, gt_trend = None, None
 
                         if len(lt) >= self.MIN_TREND_WINDOW_SIZE:

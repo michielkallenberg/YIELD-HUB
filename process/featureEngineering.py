@@ -1,3 +1,11 @@
+"""
+--------------------
+Author: XYZ
+Description: Feature engineering helpers (Completely inspired by the cybench repository) 
+Python version: 3.12.0
+--------------------
+"""
+
 import logging
 
 import numpy as np
@@ -31,15 +39,15 @@ RS_VALID_RANGES = {
     'rsm':  (0.0, 1.0),
 }
 
-# Override GDD values with literature-based calibration
+# Overriding GDD values with literature-based calibration
 # https://www.sciencedirect.com/science/article/pii/S037837742500469X
 GDD_BASE_TEMP = {
-    'maize': 10.0,   # °C — Kumudini 2014, Stewart 1998, Mederski 1973
-    'wheat': 0.0,    # °C — McMaster 1988, Raes 2023, Kukal 2020
+    'maize': 10.0,   
+    'wheat': 0.0,    
 }
 GDD_UPPER_LIMIT = {
-    'maize': 30.0,   # °C — Stewart 1998, Raes 2023, Martins 2019
-    'wheat': 26.0,   # °C — Raes 2023 AquaCrop calibration
+    'maize': 30.0,   
+    'wheat': 26.0,  
 }
 
 DEKAD_FREQ = "10D"
@@ -61,9 +69,7 @@ print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {S
 def interpolate_to_daily(data: pd.Series, target_dates: pd.DatetimeIndex,
                          method: str = 'linear', interpolate_data: str = 'unknown') -> pd.Series:
     """
-    Interpolate non-daily time series data to daily frequency.
-
-    For remote sensing data, uses _clean_rs_series to properly handle
+    Interpolate non-daily time series data to daily frequency. For remote sensing data, uses _clean_rs_series to properly handle
     sentinel values before filling.
 
     Args:
@@ -99,11 +105,10 @@ def interpolate_to_daily(data: pd.Series, target_dates: pd.DatetimeIndex,
 
 def _clean_rs_series(series: pd.Series, var_name: str) -> pd.Series:
     """
-    Mask sentinel values, then fill gaps, then clip to valid range.
+    Mask sentinel values, then fill gaps, then clip to valid range. 
 
-    Previous implementation did ffill().bfill() BEFORE clipping, which
-    could propagate sentinel values (e.g., -9999) across the season before
-    being clipped. Now we mask first, then fill, then clip.
+    Using ffill().bfill() BEFORE clipping could (? – not sure) propagate sentinel values across the season. Just to be safe, these values are first
+    masked, then ffill'ed, and then clipped.
 
     Args:
         series: Raw remote sensing series
@@ -115,14 +120,14 @@ def _clean_rs_series(series: pd.Series, var_name: str) -> pd.Series:
     s = series.copy().astype(float)
     lo, hi = RS_SENTINEL_THRESHOLDS.get(var_name, (-1e6, 1e6))
 
-    # Step 1: mask out-of-physical-range values BEFORE any filling
+    # mask out-of-physical-range values BEFORE any filling
     s[(s < lo) | (s > hi)] = np.nan
 
-    # Step 2: fill gaps (now only real gaps, not sentinels)
+    # fill gaps (now only real gaps, not sentinels)
     s = s.interpolate(method='linear', limit_direction='both')
     s = s.ffill().bfill()
 
-    # Step 3: clip to valid agronomic range
+    # clip to valid agronomic range
     valid_lo, valid_hi = RS_VALID_RANGES.get(var_name, (lo, hi))
     s = s.clip(valid_lo, valid_hi)
 
@@ -132,10 +137,7 @@ def create_sota_temporal_features(dates: pd.DatetimeIndex,
                                    sos_date=None, eos_date=None) -> np.ndarray:
     """
     Create Fourier-based temporal features for periodic pattern encoding.
-
     Replaced redundant season_sin/season_cos with crop-calendar-relative position.
-    Previous columns 4-5 were duplicates of columns 2-3 (just month with different offset).
-    Now columns 4-5 encode position relative to crop calendar (0=SOS, 1=EOS).
 
     Args:
         dates: DatetimeIndex to encode
@@ -178,12 +180,7 @@ def _compute_gdd_series(tavg: np.ndarray, tbase: float,
                         tupper: float) -> np.ndarray:
     """
     Compute daily Growing Degree Days (GDD) with upper threshold cap.
-
-    Formula: GDD = clip(min(Tavg, Tupper) - Tbase, 0, None)
-
-    Using min(Tavg, Tupper) instead of raw Tavg prevents days above the
-    upper threshold from contributing more GDD than the optimal temperature,
-    which is physiologically incorrect (development slows above Tupper).
+    GDD = clip(min(Tavg, Tupper) - Tbase, 0, None)
 
     Args:
         tavg: Array of mean daily temperatures (°C), shape (seq_len,)
@@ -201,7 +198,6 @@ def _compute_rue_series(tavg: np.ndarray, cum_prec: np.ndarray,
                         cum_rad: np.ndarray, crop: str) -> np.ndarray:
     """
     Compute Radiation Use Efficiency (RUE) index time series.
-
     RUE_index = cumPAR * T_stress * W_stress
 
     Components:
@@ -223,7 +219,7 @@ def _compute_rue_series(tavg: np.ndarray, cum_prec: np.ndarray,
         Array of RUE index values, shape (seq_len,)
     """
     Topt = 25.0 if crop == 'maize' else 20.0
-    sigma = 7.0  # temperature sensitivity width (°C)
+    sigma = 7.0  # temperature sensitivity width in celcius
 
     cum_PAR = 0.48 * cum_rad
     T_stress = np.exp(-((tavg - Topt) ** 2) / (2 * sigma ** 2))
@@ -264,13 +260,10 @@ def _compute_farquhar_series(tavg: np.ndarray, cum_prec: np.ndarray,
                              co2: float = 400.0) -> np.ndarray:
     """
     Compute Farquhar-von Caemmerer-Berry (FvCB) photosynthesis proxy time series.
+    Approximates seasonal-scale net assimilation using the FvCB C3 model.
 
-    Approximates seasonal-scale net assimilation using the FvCB C3 model
-    (Farquhar, von Caemmerer & Berry, 1980, Planta 149:78–90).
-
-    NOTE ON SCALE LIMITATION: The FvCB model was derived for instantaneous
-    leaf-scale processes. Applying it at dekadal/weekly/daily crop-season scale
-    is a proxy approximation, not a mechanistic simulation. Results should be
+   The FvCB model was derived for instantaneous leaf-scale processes. Applying it at dekadal/weekly/daily crop-season scale
+    will always be a proxy approximation, not a mechanistic simulation. Results should be
     interpreted as a biophysically-motivated index, not true assimilation rates.
 
     Model components:
@@ -297,8 +290,6 @@ def _compute_farquhar_series(tavg: np.ndarray, cum_prec: np.ndarray,
     temp_resp = _arrhenius_response(tavg)
 
     # Vcmax scales with leaf nitrogen (Rubisco is nitrogen-rich)
-    # References: Evans (1989) Oecologia 78:9-19,
-    #             Farquhar (1980) Planta 149:78-90
     Vcmax = 100.0 * temp_resp * (1.0 + 5.0 * n)
 
     # Electron transport capacity scales with PAR
@@ -335,10 +326,8 @@ def _compute_heat_stress_counts(tavg_series: np.ndarray,
                                 validity_mask: np.ndarray) -> Dict[str, float]:
     """
     Compute season-level threshold exceedance counts as static scalar features.
-
     These capture nonlinear biological responses that cumulative averages miss.
-    A single heat stress day during pollination can cause irreversible yield loss
-    (Schlenker & Roberts, 2009, PNAS 106:15594–15598).
+    A single heat stress day during pollination can cause irreversible yield loss.
 
     Features computed:
       - heat_stress_days:  days with Tmax > threshold (35°C maize, 30°C wheat)
@@ -369,7 +358,7 @@ def _compute_heat_stress_counts(tavg_series: np.ndarray,
     # Wheat and others: 30°C (grain filling threshold)
     heat_thresh = 35.0 if crop == 'maize' else 30.0
 
-    # Apply validity mask — only count real growing season days
+    # Apply validity mask to only count real growing season days
     mask = validity_mask.astype(bool)
     valid_days = max(mask.sum(), 1)  # avoid division by zero
 
@@ -440,7 +429,7 @@ def _get_aggregation_params(aggregation: str, year: int,
         target_dates = target_dates[:n_keep]
         logging.debug(f"Season length {season_length}: keeping {n_keep}/{len(target_dates)} dates")
 
-    # Validate: warn if we got significantly fewer dates than expected
+    # Warn if we got significantly fewer dates than expected
     expected_len = int(default_len * season_length)
     if len(target_dates) < expected_len * 0.8:
         logging.warning(
@@ -454,7 +443,6 @@ def _extract_weather_features(dataset: CYDataset, adm_id: str, year: int,
                                target_dates: pd.DatetimeIndex, aggregation: str,
                                weather_features_list: List[str],
                                debug: bool = False,
-                               # New parameters for domain features:
                                use_gdd: bool = False,
                                use_rue: bool = False,
                                use_farquhar: bool = False,
@@ -464,12 +452,9 @@ def _extract_weather_features(dataset: CYDataset, adm_id: str, year: int,
                                ) -> Dict[str, np.ndarray]:
     """
     Extract and aggregate weather features, optionally with domain features.
+    Incorporates weather_features_list parameter derived from config instead of using a hardcoded list, respecting use_cwb_feature and drop_tavg flags.
 
-    Now accepts weather_features_list parameter derived from config
-    instead of using a hardcoded list, respecting use_cwb_feature and drop_tavg flags.
-
-    Now returns a dict with weather features plus raw daily arrays for
-    heat stress computation, instead of just a single array.
+    Returns a dict with weather features plus raw daily arrays for heat stress computation, instead of just a single array.
 
     Args:
         dataset: CY-Bench dataset
@@ -776,7 +761,7 @@ def _extract_static_features(dataset: CYDataset, adm_id: str, year: int,
     Returns:
         Tuple of (static_features_array, latitude, longitude)
 
-    NOTE ON LAG YIELD LEAKAGE: In operational forecasting, the lag yield for year t
+    Caution: In operational forecasting, the lag yield for year t
     is the *observed* yield from year t-1. For test year t, lag_yield_1 = y(t-1),
     which may itself be a test year. This is realistic for operational use
     (prior year yield is published before the current season ends) but means
@@ -785,7 +770,7 @@ def _extract_static_features(dataset: CYDataset, adm_id: str, year: int,
     """
     static_vals = []
 
-    # 1. Soil properties
+    # Soil properties
     if "soil" in dataset._dfs_x:
         try:
             soil = dataset._dfs_x["soil"].loc[adm_id]
@@ -797,7 +782,7 @@ def _extract_static_features(dataset: CYDataset, adm_id: str, year: int,
     else:
         static_vals.extend([np.nan] * len(SOIL_PROPERTIES))
 
-    # 2. Location properties (also extracts lat/lon)
+    # Location properties (also extracts lat/lon)
     if "location" in dataset._dfs_x:
         try:
             loc = dataset._dfs_x["location"].loc[adm_id]
@@ -814,7 +799,7 @@ def _extract_static_features(dataset: CYDataset, adm_id: str, year: int,
     else:
         static_vals.extend([np.nan] * len(LOCATION_PROPERTIES))
 
-    # 3. Crop calendar dates (with cyclic encoding for day-of-year features)
+    # Crop calendar dates (with cyclic encoding for day-of-year features)
     # Renamed local variable to crop_calendar to avoid collision with crop parameter (string)
     if ("crop_season" in dataset._dfs_x and
             (adm_id, year) in dataset._dfs_x["crop_season"].index):
@@ -843,12 +828,12 @@ def _extract_static_features(dataset: CYDataset, adm_id: str, year: int,
             # cutoff_date and season_window_length are linear, not cyclic
             static_vals.append(doy)
 
-    # 4. Explicit spatial features
+    # Explicit spatial features
     if include_spatial_features:
         static_vals.append(lat if lat is not None else np.nan)
         static_vals.append(lon if lon is not None else np.nan)
 
-    # 5. Lagged yields
+    # Lagged yields
     for lag in range(1, lag_years + 1):
         lag_value = np.nan
         try:
@@ -868,7 +853,7 @@ def _extract_static_features(dataset: CYDataset, adm_id: str, year: int,
     if lag_years > 0:
         logging.debug(f"[{adm_id}] Added {lag_years} lagged yield features")
 
-    # 6. Heat stress counts (static scalar features, computed from raw TS)
+    # Heat stress counts (static scalar features, computed from raw TS)
     if use_heat_stress_days:
         if (tavg_series is not None and tmin_series is not None and
                 tmax_series is not None and prec_series is not None and
@@ -898,10 +883,8 @@ def _assemble_features(features: Dict, seq_len: int,
                        use_farquhar: bool = False) -> np.ndarray:
     """
     Concatenate time series feature arrays in consistent column order.
-
-    Now accepts weather_features_list parameter instead of using global.
-
-    Now includes domain features (GDD, RUE, Farquhar) when enabled.
+    Incorporates weather_features_list parameter instead of using global.
+    Incorporates domain features (GDD, RUE, Farquhar) when enabled.
     """
     n_weather = len(weather_features_list)
     n_domain = sum([use_gdd, use_rue, use_farquhar])
@@ -913,7 +896,6 @@ def _assemble_features(features: Dict, seq_len: int,
     col = 0
 
     if 'weather' in features:
-        # Assert exact shape match - _extract_weather_features now guarantees this
         # The weather array now includes base weather + domain features
         assert features['weather'].shape == (seq_len, n_weather_total), (
             f"Weather shape mismatch: expected ({seq_len}, {n_weather_total}), "
@@ -943,7 +925,6 @@ def build_daily_input_sequence(
         lag_years: int = 0,
         weather_features_list: Optional[List[str]] = None,
         debug: bool = False,
-        # New domain feature flags:
         use_gdd: bool = False,
         use_heat_stress_days: bool = False,
         use_rue: bool = False,

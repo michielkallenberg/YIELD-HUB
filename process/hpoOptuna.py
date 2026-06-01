@@ -1,8 +1,11 @@
 """
-Shared hyperparameter optimization utilities using Optuna.
-
-This module provides common functions for hyperparameter optimization
-that are used across different baseline training scripts.
+--------------------
+Author: XYZ
+Description: Shared hyperparameter optimization utilities using Optuna. This script provides helper functions for hyperparameter optimization
+that are used across different baseline training scripts
+ 
+Python version: 3.12.0
+--------------------.
 """
 
 import csv

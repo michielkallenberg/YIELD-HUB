@@ -38,9 +38,8 @@ print(f"[Feature Config] SOTA Temporal vars ({len(SOTA_TEMPORAL_VARS_LIST)}): {S
 
 class BaseTimeSeriesModel(ABC, pl.LightningModule):
     """
-    Abstract base for all time series forecasting architectures.
+    Base class for all time series forecasting architectures.
     """
-
     def __init__(self, config: LinearModelConfig, lr: float = 1e-4, weight_decay: float = 1e-5):
         super().__init__()
         self.save_hyperparameters()
@@ -51,7 +50,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         self.feature_norm_params: Optional[Dict] = None
 
         use_sota = config.use_sota_features
-        # Domain features (GDD, RUE, Farquhar) are additional TS channels beyond base weather
+        # Domain features (GDD, RUE, Farquhar) – additional TS channels beyond weather
         n_domain_ts = sum([config.use_gdd, config.use_rue, config.use_farquhar])
         self.n_ts_features = (
             len(config.time_series_vars)
@@ -105,17 +104,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
     @staticmethod
     def _get_standardized_context_length(seq_len: int, lags_sequence: List[int]) -> int:
         """
-        Calculate standardized context length for all models.
-
-        This ensures fair comparison across architectures (both linear and transformer)
-        by using the same context length calculation: seq_len - max(lags_sequence)
-
-        Args:
-            seq_len: Total sequence length
-            lags_sequence: List of lag values
-
-        Returns:
-            Effective sequence length that accounts for lag requirements
+        Calculate standardized context length for all models (both linear and transformer).
+        context length calculation: seq_len - max(lags_sequence)
         """
         return seq_len - max(lags_sequence)
 
@@ -139,8 +129,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                                 observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Z-score normalise each time series feature using training statistics.
-
-        Now includes domain feature names (GDD, RUE, Farquhar) when enabled.
+        Also includes domain feature names (GDD, RUE, Farquhar) when enabled.
         """
         if self.feature_norm_params is None:
             if hasattr(self, 'trainer') and self.trainer is not None:
@@ -233,12 +222,12 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         self._verify_mask_is_used()
 
     def _verify_mask_is_used(self):
-        """Smoke test: masked-out inputs should produce different outputs than unmasked."""
+        # Testing if masked-out inputs produces different outputs than unmasked.
         if not hasattr(self, '_model_ready') or not self._model_ready:
             logging.info(f"[{self.config.model_type}] Skipping mask verification (model not ready).")
             return
 
-        # Use effective_seq_len if available (for linear models)
+        # Using effective_seq_len if available (for linear models)
         seq_len = self._effective_seq_len if hasattr(self, '_effective_seq_len') else self.config.seq_len
         dummy_ts = torch.randn(2, seq_len, self.n_ts_features, device=self.device)
         dummy_static = torch.zeros(2, self.n_static_features, device=self.device)
@@ -311,7 +300,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         return loss
 
     def on_test_start(self):
-        """Reset prediction cache at the start of testing and initialize per-year prediction storage."""
+        # Reset prediction cache
         self._yield_predictions_cache.clear()
         if self.config.use_recursive_lags and self.config.lag_years > 0:
             logging.info("[Recursive Lags] Prediction cache cleared for testing")
@@ -330,17 +319,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
     def _replace_lags_with_predictions(
         self, x_static: torch.Tensor, years: torch.Tensor, adm_ids: List[str]
     ) -> torch.Tensor:
-        """
-        Replace observed lag yield features with cached predictions.
-
-        Args:
-            x_static: Static features [B, n_static]
-            years: Years [B]
-            adm_ids: Location IDs [B]
-
-        Returns:
-            Modified x_static with lag features replaced by cached predictions
-        """
+        # Replace observed lag yield features with cached predictions.
         x_static_modified = x_static.clone()
 
         # Get indices of lag features in static features
@@ -366,7 +345,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                     # Use cached prediction (in original scale, will be normalized later)
                     cached_pred = self._yield_predictions_cache[cache_key]
                     x_static_modified[sample_idx, lag_idx] = cached_pred
-                # else: No cached prediction available, keep original (will be NaN/imputed)
+                    # else: No cached prediction available, keep original (will be NaN/imputed)
 
         return x_static_modified
 
@@ -423,7 +402,6 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         dm = self.trainer.datamodule
 
         # Compute trends if enabled and trend model has been fitted
-        # (skip during sanity check validation before on_train_start)
         if self.config.use_residual_trend and self.trend_model._train_df is not None:
             batch_trends = self._compute_batch_trends(adm_ids, years, dm, lats, lons)
             assert batch_trends is not None
@@ -541,7 +519,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                 self._per_year_preds[year_int]['targets'].append(float(target))
 
     def _compute_per_year_metrics_from_preds(self) -> dict:
-        """Compute per-year metrics from accumulated predictions using torchmetrics."""
+        # Compute per-year metrics from accumulated predictions using torchmetrics.
         results = {}
 
         for year, data in self._per_year_preds.items():
@@ -644,14 +622,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
     def predict(self, batch):
         """
         Generate predictions for a batch of data without updating metrics.
-
-        This method can be called on-demand after training to get predictions
-        for new data. Unlike test_step, this does not update any metrics or
-        log any results - it simply returns denormalized predictions.
-
         Args:
             batch: Input batch tuple (x_ts, x_static, y_z, years, adm_ids, lats, lons, validity_mask)
-
         Returns:
             dict: Dictionary containing:
                 - predictions: Predictions in original scale (tons/ha), clipped to >= 0
@@ -744,7 +716,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                 })
 
 # =========================================================
-# LINEAR BASELINE MODELS
+# LINEAR BASELINE ARCHITECTURES
 # =========================================================
 
 class NLinearYieldModel(BaseTimeSeriesModel):
@@ -769,10 +741,10 @@ class NLinearYieldModel(BaseTimeSeriesModel):
             f"n_static_features={self.n_static_features}"
         )
 
-        # One linear layer maps (effective_seq_len,) → (1,) per channel
+        # One linear layer maps (effective_seq_len,) = (1,) per channel
         self.temporal_linear = nn.Linear(effective_seq_len, 1)
 
-        # After pooling across channels: n_ts_features scalars + static features → yield
+        # After pooling across channels: n_ts_features scalars + static features = yield
         combined_dim = self.n_ts_features + self.n_static_features
         self.regression_head = nn.Sequential(
             nn.Linear(combined_dim, combined_dim // 2),
@@ -804,7 +776,7 @@ class NLinearYieldModel(BaseTimeSeriesModel):
         """
         B, T, C = x_ts.shape
 
-        # Truncate to effective sequence length for fair comparison with transformers
+        # Truncate to effective sequence length to compare with transformers
         if T > self._effective_seq_len:
             x_ts = x_ts[:, :self._effective_seq_len, :]
             if observed_mask is not None:
@@ -987,8 +959,7 @@ class RevIN(nn.Module):
         mean = sum(x * mask) / sum(mask)
         std = sqrt(sum((x - mean)^2 * mask) / sum(mask) + eps)
 
-    Uses population std (dividing by N, not N-1) for consistency with the Reversible Instance Normalization paper.
-
+    Uses population std (dividing by N, not N-1) for consistency with the Reversible Instance Normalization paper. 
     The affine transform (gamma, beta) is learned during training.
     """
 
@@ -1038,8 +1009,7 @@ class RevIN(nn.Module):
 class RLinearYieldModel(BaseTimeSeriesModel):
     """
     RLinear: NLinear with RevIN instance normalization.
-
-    From "Revisiting Long-term Time Series Forecasting" (Li et al.)
+    From "An Analysis of Linear Time Series Forecasting Models" (Li et al. 2024)
     """
 
     def _build_model(self) -> nn.Module:
@@ -1120,10 +1090,7 @@ class RLinearYieldModel(BaseTimeSeriesModel):
 
 
 class XLinearGatingBlock(nn.Module):
-    """
-    Shared gating block used by XLinear.
-    """
-
+    # Shared gating block used by XLinear.
     def __init__(self, input_dim: int, ff_dim: int, dropout: float = 0.1):
         super().__init__()
         self.gate_mlp = nn.Sequential(
@@ -1573,13 +1540,13 @@ class OLinearYieldModel(BaseTimeSeriesModel):
         # Reshape to apply ortho_trans to all channels: [B, N, D*T] -> [B*N, D*T]
         x_flat_reshaped = x_flat.reshape(B * N, -1)
 
-        # Apply ortho_trans (MLP with proper normalization - key OLinear-C innovation)
+        # Apply ortho_trans (MLP with proper normalization
         encoded = self.ortho_trans(x_flat_reshaped)  # [B*N, D*T] -> [B*N, embed_size]
 
         # Reshape back to [B, N, embed_size]
         encoded = encoded.reshape(B, N, -1)
 
-        # Apply channel correlation matrix (OLinear-C innovation)
+        # Apply channel correlation matrix
         # Use the computed correlation to guide channel-wise attention
         if self.channel_corr_mat is not None:
             # Normalize correlation matrix with softmax (key OLinear-C component)
@@ -1669,10 +1636,7 @@ class OLinearEncoderLayer(nn.Module):
         return output, None
 
 
-# =========================================================
-# MODEL FACTORY
-# =========================================================
-
+# Creating model function
 def create_model(config: LinearModelConfig) -> BaseTimeSeriesModel:
     model_map = {
         "nlinear": NLinearYieldModel,

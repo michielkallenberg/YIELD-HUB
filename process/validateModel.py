@@ -1,3 +1,10 @@
+"""
+--------------------
+Author: XYZ
+Description: Script to import different validation helper functions and classes. 
+Python version: 3.12.0
+"""
+
 import os, sys
 from tqdm import tqdm
 from typing import Optional, Dict, List, Tuple
@@ -13,15 +20,15 @@ from cybench.datasets.dataset import Dataset as CYDataset
 import torch
 import torchmetrics
 import torch.nn as nn
-from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 
 # Custom library
 from loadData import prepare_features_and_targets
+from eb_criterion import EBCriterionCallbackV2
 
 def evaluate_predictions_by_year(y_true, y_pred, years, metrics=None, min_samples_per_year=2, epsilon=1e-6):
     """
-    Compute regression metrics overall and per year with robustness to small sample sizes
-    and zero/near-zero variance.
+    Compute overall performance and per year with robustness to small sample sizes and zero/near-zero variance.
 
     Args:
         y_true: np.ndarray of true targets
@@ -41,7 +48,6 @@ def evaluate_predictions_by_year(y_true, y_pred, years, metrics=None, min_sample
     EPSILON = epsilon
     results = {}
 
-    # --- Metric functions ---
     def compute_r2_or_nan(y_t, y_p):
         if len(y_t) < min_samples_per_year or np.std(y_t) < EPSILON:
             return np.nan
@@ -63,7 +69,7 @@ def evaluate_predictions_by_year(y_true, y_pred, years, metrics=None, min_sample
         denom = np.max(y_t) - np.min(y_t)
         return compute_rmse(y_t, y_p) / (denom + EPSILON) * 100
 
-    # --- Overall metrics ---
+    # Overall metrics 
     results['overall'] = {}
     for metric in metrics:
         if metric == 'r2':
@@ -75,7 +81,7 @@ def evaluate_predictions_by_year(y_true, y_pred, years, metrics=None, min_sample
         elif metric == 'normalized_rmse':
             results['overall']['normalized_rmse'] = compute_normalized_rmse(y_true, y_pred)
 
-    # --- Per-year metrics ---
+    # Per-year metrics 
     years = np.array(years)
     for year in sorted(set(years)):
         mask = np.where(years == year)[0]
@@ -119,14 +125,10 @@ def store_model_results(results_dict, model_name, country, crop, file_path="../o
 
     combined_df = combined_df.drop_duplicates(subset=["model", "country", "crop", "year", "metric"])
     combined_df.to_csv(file_path, index=False)
-    # print(f"Results stored successfully. Total records: {len(combined_df)}")
     return combined_df
 
 def evaluate_OOD_results_from_countries(crop, model_name, pipeline, file_path):
-    """
-    Evaluates the trained model on EU countries in CY-BENCH dataset.
-    """
-
+    # Evaluates the trained model on EU countries in CY-BENCH dataset.
     countries_to_evaluate = ["AT", "BE", "BG", "CZ", "DE", "DK", "EE", "EL", "ES", "FI", "FR", "HR", "HU", "IE", "IT", "LT", "LV", "NL", "PL", "PT", "RO", "SE", "SK"]
 
     if crop == "maize":
@@ -139,7 +141,6 @@ def evaluate_OOD_results_from_countries(crop, model_name, pipeline, file_path):
     for country in countries_not_of_interest:
         countries_to_evaluate.remove(country)
     
-    # for country in tqdm(countries_to_evaluate):
     pbar = tqdm(countries_to_evaluate, desc="Evaluating")
     for country in pbar:
         pbar.set_description(f"Evaluating {model_name} model on {country} country")
@@ -161,13 +162,12 @@ def evaluate_OOD_results_from_countries(crop, model_name, pipeline, file_path):
 
 class ModelMetrics(nn.Module):
     """
-    Comprehensive metrics for agricultural yield forecasting.
+    Model class with comprehensive metrics for in-season and end-of-season yield forecasting.
 
     Wraps torchmetrics to provide MSE, MAE, RMSE, R², MAPE, SMAPE, NRMSE.
     Prefix (train/val/test) is used for wandb logging namespacing.
 
-    NOTE: Inherits from nn.Module so metrics are moved to device automatically
-    when the parent LightningModule is moved to GPU.
+    Inherits from nn.Module so metrics are moved to device automatically when the parent LightningModule is moved to GPU.
     """
 
     def __init__(self, prefix: str = "test", include_nrmse: bool = True):
@@ -189,7 +189,30 @@ class ModelMetrics(nn.Module):
         self.metrics.update(preds, targets)
 
     def compute(self) -> Dict:
-        return self.metrics.compute()
+        try:
+            return self.metrics.compute()
+        except ValueError as e:
+            if "Needs at least two samples to calculate r2 score" in str(e):
+                # Handle sparse data case (e.g., single test sample) - return NaN for R2
+                import torch
+                metrics = {}
+                # Get other metrics that don't require 2+ samples
+                for key in ['mse', 'mae', 'mape', 'smape', 'nrmse']:
+                    try:
+                        m = self.metrics[key]
+                        if hasattr(m, 'compute'):
+                            metrics[key] = m.compute()
+                    except:
+                        pass
+                # RMSE from MSE
+                if 'mse' in metrics:
+                    import math
+                    metrics['rmse'] = math.sqrt(metrics['mse'].item()) if isinstance(metrics['mse'], torch.Tensor) else math.sqrt(float(metrics['mse']))
+                # R2 as NaN for insufficient samples
+                metrics['r2'] = float('nan')
+                return metrics
+            else:
+                raise
 
     def reset(self):
         self.metrics.reset()
@@ -198,21 +221,21 @@ class ModelMetrics(nn.Module):
         results = self.compute()
         print(f"\n{'-' * 60}")
         print(f"{step.upper()} METRICS ({self.prefix.upper()}):")
-        print(f"  MSE:   {results['mse']:.4f}")
-        print(f"  MAE:   {results['mae']:.4f}")
-        print(f"  RMSE:  {torch.sqrt(results['mse']):.4f}")
-        print(f"  R²:    {results['r2']:.4f}")
+        print(f"MSE:   {results['mse']:.4f}")
+        print(f"MAE:   {results['mae']:.4f}")
+        print(f"RMSE:  {torch.sqrt(results['mse']):.4f}")
+        print(f"R²:    {results['r2']:.4f}")
         # MAPE/SMAPE reported as fractions
-        print(f"  MAPE:  {results['mape']:.4f}")
-        print(f"  SMAPE: {results['smape']:.4f}")
+        print(f"MAPE:  {results['mape']:.4f}")
+        print(f"SMAPE: {results['smape']:.4f}")
         # Only print NRMSE if it exists (excluded for training metrics)
         if 'nrmse' in results:
-            print(f"  NRMSE: {results['nrmse']:.4f}")
+            print(f"NRMSE: {results['nrmse']:.4f}")
         print(f"{'-' * 60}")
 
 def format_metrics_dict(results: Dict) -> Dict[str, float]:
     """
-    Convert torchmetrics tensor results to a clean dict of floats.
+    Convert torchmetrics tensor results to a dict of floats.
 
     Args:
         results: Dict with tensor metrics from ModelMetrics.compute()
@@ -235,7 +258,7 @@ def print_metrics_table(title: str, metrics: Dict, step: str = "test"):
     Print a nicely formatted table of all metrics.
 
     Args:
-        title: Section title (e.g., "CV Fold 1 Results")
+        title: Section title (ex – "CV Fold 1 Results")
         metrics: Dict from format_metrics_dict()
         step: Step name for context
     """
@@ -244,19 +267,19 @@ def print_metrics_table(title: str, metrics: Dict, step: str = "test"):
     print(f"{'=' * 70}")
 
     if metrics.get('mse') is not None:
-        print(f"  MSE:   {metrics['mse']:.4f}")
+        print(f"MSE:   {metrics['mse']:.4f}")
     if metrics.get('mae') is not None:
-        print(f"  MAE:   {metrics['mae']:.4f}")
+        print(f"MAE:   {metrics['mae']:.4f}")
     if metrics.get('rmse') is not None:
-        print(f"  RMSE:  {metrics['rmse']:.4f}")
+        print(f"RMSE:  {metrics['rmse']:.4f}")
     if metrics.get('r2') is not None:
-        print(f"  R²:    {metrics['r2']:.4f}")
+        print(f"R²:    {metrics['r2']:.4f}")
     if metrics.get('mape') is not None:
-        print(f"  MAPE:  {metrics['mape']:.2f}%")
+        print(f"MAPE:  {metrics['mape']:.2f}%")
     if metrics.get('smape') is not None:
-        print(f"  SMAPE: {metrics['smape']:.2f}%")
+        print(f"SMAPE: {metrics['smape']:.2f}%")
     if metrics.get('nrmse') is not None:
-        print(f"  NRMSE: {metrics['nrmse']:.4f}")
+        print(f"NRMSE: {metrics['nrmse']:.4f}")
 
     print(f"{'-' * 70}")
 
@@ -306,7 +329,7 @@ def save_walk_forward_results(
                 'country': config.country,
                 'model_type': getattr(config, 'model_type', 'unknown'),
                 'aggregation': getattr(config, 'aggregation', 'unknown'),
-                'fold': fold_idx,
+                'fold': fold_idx + 1,
                 'train_end_year': train_end_year,
                 'test_year': test_year,
                 'mse': metrics.get('mse'),
@@ -357,16 +380,16 @@ def save_walk_forward_results(
             overall_avg[col] = per_year_agg[mean_col].mean()
 
     print(f"\n[Walk-Forward] CSV Results saved to:")
-    print(f"  Detailed: {csv_path}")
-    print(f"  Aggregated: {agg_path}")
+    print(f"Detailed: {csv_path}")
+    print(f"Aggregated: {agg_path}")
     print(f"\n[Walk-Forward] Overall Average (average of per-year means):")
-    print(f"  MSE:   {overall_avg['mse']:.4f}")
-    print(f"  MAE:   {overall_avg['mae']:.4f}")
-    print(f"  RMSE:  {overall_avg['rmse']:.4f}")
-    print(f"  R2:    {overall_avg['r2']:.4f}")
-    print(f"  MAPE:  {overall_avg['mape']:.2f}%")
-    print(f"  SMAPE: {overall_avg['smape']:.2f}%")
-    print(f"  NRMSE: {overall_avg['nrmse']:.4f}")
+    print(f"MSE:   {overall_avg['mse']:.4f}")
+    print(f"MAE:   {overall_avg['mae']:.4f}")
+    print(f"RMSE:  {overall_avg['rmse']:.4f}")
+    print(f"R2:    {overall_avg['r2']:.4f}")
+    print(f"MAPE:  {overall_avg['mape']:.2f}%")
+    print(f"SMAPE: {overall_avg['smape']:.2f}%")
+    print(f"NRMSE: {overall_avg['nrmse']:.4f}")
 
     return csv_path
 
@@ -378,12 +401,13 @@ def run_walk_forward_validation(
     create_model_fn,
     datamodule_class,
     trainer_class,
-    early_stopping_epoch: int,
-    es_patience: int,
-    es_min_delta: float,
+    max_epochs: int,
     loggers: List,
     run_id: str,
-    timestamp: str
+    timestamp: str,
+    save_checkpoint_dir: Optional[str] = None,
+    save_top_k: int = -1,
+    save_last: bool = True,
 ) -> Dict:
     """
     Run walk-forward validation where each fold is tested on ALL future years.
@@ -397,18 +421,23 @@ def run_walk_forward_validation(
 
     Args:
         all_years: Sorted list of all available years
-        test_years: Number of years to walk forward
+        test_years: Number of years to walk forward (N)
         config: Model configuration object
         create_model_fn: Function that creates a model from config
         datamodule_class: Class for creating datamodules
         trainer_class: PyTorch Lightning Trainer class
-        early_stopping_epoch: Max epochs for early stopping
-        es_patience: Early stopping patience
-        es_min_delta: Early stopping min delta
+        max_epochs: Maximum training epochs per fold
         loggers: List of loggers (WandB, CSV)
         run_id: Unique run identifier
         timestamp: Timestamp string
 
+        save_checkpoint_dir: Directory to save checkpoints (fold-aware filenames)
+        save_top_k: Number of checkpoints to save per fold (-1=all, 1=best only)
+        save_last: Whether to save last checkpoint (ignored when save_top_k=1)
+
+        save_checkpoint_dir: Directory to save checkpoints (fold-aware filenames)
+        save_top_k: Number of checkpoints to save per fold (-1=all, 1=best only)
+        save_last: Whether to save last checkpoint (ignored when save_top_k=1)
     Returns:
         Dict containing:
         - results_matrix: List of fold results with yearly metrics
@@ -425,13 +454,11 @@ def run_walk_forward_validation(
     wf_splits = generate_walk_forward_splits(all_years, test_years)
 
     print(f"[Walk-Forward Config]")
-    print(f"  Number of folds: {len(wf_splits)}")
-    print(f"  Early stopping epoch limit (E): {early_stopping_epoch}")
-    print(f"  Early stopping patience: {es_patience}")
-    print(f"  Early stopping min_delta: {es_min_delta}")
+    print(f"Number of folds: {len(wf_splits)}")
+    print(f"Max epochs per fold: {max_epochs}")
     print(f"\n[Walk-Forward Splits]")
     for s in wf_splits:
-        print(f"  Fold {s['fold_idx']}: train_years={len(s['train_years'])} ({min(s['train_years'])}-{max(s['train_years'])})")
+        print(f"Fold {s['fold_idx'] + 1}: train_years={len(s['train_years'])} ({min(s['train_years'])}-{max(s['train_years'])})")
 
     # Store results from all folds
     results_matrix = []
@@ -440,12 +467,12 @@ def run_walk_forward_validation(
         print(f"\n{'=' * 70}")
         print(f"FOLD {fold_idx + 1}/{len(wf_splits)}")
         print(f"{'=' * 70}")
-        print(f"  Train years: {split['train_years']}")
-        print(f"  Train end year: {max(split['train_years'])}")
+        print(f"Train years: {split['train_years']}")
+        print(f"Train end year: {max(split['train_years'])}")
 
         # Create config for this fold
         fold_config = _update_config_for_fold(
-            config, split['train_years'], early_stopping_epoch
+            config, split['train_years'], max_epochs
         )
 
         # Create datamodule and model
@@ -458,17 +485,35 @@ def run_walk_forward_validation(
 
         model_fold = create_model_fn(fold_config)
 
-        # Setup callbacks
+        # Use EB-criterion for proper early stopping
         fold_callbacks = [
-            EarlyStopping(
-                monitor='train_loss',
-                patience=es_patience,
-                min_delta=es_min_delta,
-                mode='min',
+            EBCriterionCallbackV2(
+                batch_size=fold_config.batch_size,
+                patience=2,  # Wait 2 epochs after criterion is met before stopping
+                smoothing=0.9,
+                min_epochs=10,  # Minimum epochs before allowing early stop
                 verbose=True,
+                stopping_threshold=0.0,  # Paper's threshold
             ),
             LearningRateMonitor(logging_interval='epoch'),
         ]
+
+        # Add ModelCheckpoint callback if directory provided
+        if save_checkpoint_dir:
+            os.makedirs(save_checkpoint_dir, exist_ok=True)
+            train_end_year = max(split['train_years'])
+            checkpoint_filename = f"{config.crop}_{config.country}_{config.model_type}_fold{fold_idx + 1}_train_end_{train_end_year}_{{epoch}}"
+            # Monitor train_loss for checkpoint selection (EB-criterion is for stopping, not selection)
+            fold_callbacks.append(
+                ModelCheckpoint(
+                    dirpath=save_checkpoint_dir,
+                    filename=checkpoint_filename,
+                    monitor='train_loss',
+                    mode='min',
+                    save_top_k=save_top_k, 
+                    save_last=save_last,
+                )
+            )
 
         # Create trainer
         trainer_fold = trainer_class(
@@ -482,16 +527,17 @@ def run_walk_forward_validation(
             enable_model_summary=False,
         )
 
-        print(f"\n[Fold {fold_idx}] Training...")
+        print(f"\n[Fold {fold_idx + 1}] Training...")
         trainer_fold.fit(model_fold, dm_fold)
 
         # Test on ALL future years
         train_end_year = max(split['train_years'])
         future_years = [y for y in all_years if y > train_end_year]
 
-        print(f"\n[Fold {fold_idx}] Testing on {len(future_years)} future years: {future_years}")
+        print(f"\n[Fold {fold_idx + 1}] Testing on {len(future_years)} future years: {future_years}")
 
         fold_yearly_metrics = {}
+        first_test_year_logged = False
 
         for test_year in future_years:
             # Create test datamodule for this single year
@@ -504,6 +550,8 @@ def run_walk_forward_validation(
                 test_years=[test_year]
             )
 
+            # Unfortunately, rainer.test() doesn't accept logger argument in this Lightning version
+            # But then also, we only want per-fold metrics, not the last fold's metrics overriding everything
             test_results = trainer_fold.test(model_fold, dm_test, verbose=False)
 
             if test_results:
@@ -519,7 +567,12 @@ def run_walk_forward_validation(
                 }
                 fold_yearly_metrics[test_year] = metrics
 
-                print(f"  Year {test_year}: NRMSE={metrics['nrmse']:.4f}, R2={metrics['r2']:.4f}")
+                print(f"Year {test_year}: NRMSE={metrics['nrmse']:.4f}, R2={metrics['r2']:.4f}")
+
+                # Log to wandb with fold-specific prefix for first test year only
+                if not first_test_year_logged:
+                    _log_test_metrics_to_wandb(loggers, metrics, fold_idx)
+                    first_test_year_logged = True
 
         results_matrix.append({
             'fold_idx': fold_idx,
@@ -530,13 +583,23 @@ def run_walk_forward_validation(
     # Aggregate results
     aggregated = _aggregate_walk_forward_results(results_matrix, all_years, test_years)
 
+    # Collect per-fold all-year metrics for WandB logging
+    fold_all_year_metrics = _collect_fold_all_year_metrics(results_matrix)
+
+    print(f"\n[DEBUG] Walk-forward summary - {len(results_matrix)} folds processed")
+    for fold_result in results_matrix:
+        fold_idx = fold_result['fold_idx']
+        yearly_metrics = fold_result['yearly_metrics']
+        first_year = min(yearly_metrics.keys()) if yearly_metrics else None
+        print(f"Fold {fold_idx + 1}: {len(yearly_metrics)} test years, first year={first_year}")
+
     # Save to CSV
     csv_path = save_walk_forward_results(
         results_matrix, all_years, test_years, config, run_id, timestamp
     )
 
-    # Log to WandB (overall averages with run_id)
-    _log_walk_forward_to_wandb(loggers, aggregated, run_id)
+    # Log to WandB (overall averages only - per-fold first-year metrics already logged)
+    _log_walk_forward_to_wandb(loggers, aggregated, run_id, fold_all_year_metrics)
 
     return {
         'results_matrix': results_matrix,
@@ -653,31 +716,68 @@ def _aggregate_walk_forward_results(results_matrix: List[Dict], all_years: List[
     return {'overall': overall, 'per_year': per_year, 'first_year': first_year}
 
 
-def _log_walk_forward_to_wandb(loggers: List, aggregated: Dict, run_id: str):
-    """Log walk-forward aggregated metrics to WandB.
+def _collect_fold_all_year_metrics(results_matrix: List[Dict]) -> Dict:
+    """Collect all test year metrics for each fold (for fold-level averaging).
 
-    Logs both overall averages and first-test-year-only averages.
+    Returns:
+        Dict mapping fold_idx to a dict of test_year -> metrics:
+        {
+            0: {
+                2018: {'nrmse': 0.123, 'r2': 0.456, ...},
+                2019: {'nrmse': 0.234, 'r2': 0.567, ...},
+                ...
+            },
+            ...
+        }
+    """
+    fold_metrics = {}
+    for fold_result in results_matrix:
+        fold_idx = fold_result['fold_idx']
+        fold_metrics[fold_idx] = fold_result['yearly_metrics']
+
+    return fold_metrics
+
+
+def _log_test_metrics_to_wandb(loggers: List, metrics: Dict, fold_idx: int):
+    """Log test metrics to WandB with fold-specific prefix.
+
+    Logs as test/fold_{idx}/{metric} for each fold separately.
+    Only called for the first test year of each fold.
     """
     for logger in loggers:
         if hasattr(logger, 'experiment'):  # WandB logger
-            metrics_to_log = {
-                'walk_forward/run_id': run_id,
-            }
-            # Log overall metrics
-            for metric_name, value in aggregated['overall'].items():
-                if value is not None and not metric_name.endswith('_std'):
-                    metrics_to_log[f'walk_forward/{metric_name}'] = value
-                    std_key = f'{metric_name}_std'
-                    if std_key in aggregated['overall']:
-                        metrics_to_log[f'walk_forward/{metric_name}_std'] = aggregated['overall'][std_key]
+            metrics_to_log = {}
+            for metric_name, value in metrics.items():
+                if value is not None:
+                    metrics_to_log[f'test/fold_{fold_idx + 1}/{metric_name}'] = value
+            if metrics_to_log:
+                logger.experiment.log(metrics_to_log)
+                print(f"[WandB] Logged fold_{fold_idx + 1} first-year metrics: R2={metrics.get('r2'):.4f}, NRMSE={metrics.get('nrmse'):.4f}")
 
-            # Log first test year only metrics
-            if 'first_year' in aggregated:
+
+def _log_walk_forward_to_wandb(loggers: List, aggregated: Dict, run_id: str,
+                               fold_all_year_metrics: Dict = None):
+    """Log walk-forward metrics to WandB.
+
+    Note: Per-fold first-year metrics are already logged inside the fold loop
+    by _log_test_metrics_to_wandb(). This function only logs overall averages.
+    """
+    for logger in loggers:
+        if hasattr(logger, 'experiment'):  # WandB logger
+            metrics_to_log = {}
+
+            # Log overall averages across all folds and years
+            if aggregated and 'overall' in aggregated:
+                for metric_name, value in aggregated['overall'].items():
+                    if value is not None and not metric_name.endswith('_std'):
+                        metrics_to_log[f'test/{metric_name}'] = value
+
+            # Also log first-year averages (useful for comparison)
+            if aggregated and 'first_year' in aggregated:
                 for metric_name, value in aggregated['first_year'].items():
                     if value is not None and not metric_name.endswith('_std'):
-                        metrics_to_log[f'walk_forward/first_year/{metric_name}'] = value
-                        std_key = f'{metric_name}_std'
-                        if std_key in aggregated['first_year']:
-                            metrics_to_log[f'walk_forward/first_year/{metric_name}_std'] = aggregated['first_year'][std_key]
+                        metrics_to_log[f'test/first_year_avg/{metric_name}'] = value
 
-            logger.experiment.log(metrics_to_log)
+            if metrics_to_log:
+                logger.experiment.log(metrics_to_log)
+                print(f"[WandB] Logged overall metrics to WandB")

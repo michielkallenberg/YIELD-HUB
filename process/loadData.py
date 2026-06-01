@@ -1,3 +1,12 @@
+"""
+--------------------
+Author: XYZ
+Description: Contains helper functions and classes to load the cybench data.
+Python version: 3.12.0
+
+--------------------
+"""
+
 import sys
 import logging
 from typing import Union
@@ -121,8 +130,8 @@ class DailyYieldDataset(Dataset):
         self.adm_ids = list(adm_ids) if adm_ids is not None else None
 
         # replace None with nan before passing to torch.tensor().
-        # _extract_static_features() can return lat=None / lon=None when location
-        # data is missing. torch.tensor([1.2, None, 3.4]) raises a TypeError.
+        # _extract_static_features() can return lat=None / lon=None when location data is missing. 
+        # In those cases, torch.tensor([1.2, None, 3.4]) raises a TypeError.
         def _safe_tensor(lst):
             if lst is None:
                 return None
@@ -150,8 +159,6 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
 
     def __init__(self, config: Union[TSTModelConfig, LinearModelConfig]):
         super().__init__()
-        # Ignore config in save_hyperparameters to avoid circular checkpoint references
-        # (ModelConfig contains load_checkpoint which could point to another checkpoint)
         self.save_hyperparameters(ignore=['config'])
         self.config = config
         self.y_mean = self.y_std = None
@@ -188,8 +195,7 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
                           (useful for caching features across CV folds)
         """
         cfg = self.config
-        # If called by Lightning internals with no explicit splits,
-        # and we already have datasets, skip re-setup to preserve the current split.
+        # If called by Lightning internals with no explicit splits, and we already have datasets, skip re-setup to preserve the current split.
         # This prevents Lightning from overriding our carefully configured splits.
         if (train_years is None and self.train_ds is not None):
             return
@@ -427,7 +433,7 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
         """
         Returns the test dataloader.
 
-        NOTE: shuffle=False processes samples in dataset construction order.
+        shuffle=False processes samples in dataset construction order.
         For --use_recursive_lags to work correctly, samples within each location must
         appear in chronological order. This holds as long as ds[i] iterates chronologically
         within each location, which is assumed but not enforced by CYDataset.
@@ -492,18 +498,20 @@ def generate_walk_forward_splits(all_years, test_years):
     Train on all years except last N, then walk forward one year at a time.
 
     Example: years=[2000-2020], test_years=5
-    - Fold 0: train=2000-2015, test=2016
-    - Fold 1: train=2000-2016, test=2017
-    - Fold 2: train=2000-2017, test=2018
-    - Fold 3: train=2000-2018, test=2019
-    - Fold 4: train=2000-2019, test=2020
+    - Fold 1 (fold_idx=0): train=2000-2015, test=2016
+    - Fold 2 (fold_idx=1): train=2000-2016, test=2017
+    - Fold 3 (fold_idx=2): train=2000-2017, test=2018
+    - Fold 4 (fold_idx=3): train=2000-2018, test=2019
+    - Fold 5 (fold_idx=4): train=2000-2019, test=2020
+
+    Note: Internal fold_idx is 0-indexed, but displayed as 1-indexed to users.
 
     Args:
         all_years: List of all available years
         test_years: Number of years to walk forward (N)
 
     Returns:
-        List of dicts with train_years, test_years, fold_idx
+        List of dicts with train_years, test_years, fold_idx (0-indexed)
     """
     splits = []
     initial_train_cutoff = len(all_years) - test_years

@@ -1,3 +1,10 @@
+"""
+--------------------
+Author: XYZ
+Description: Helper functions that I couldn't decide where to put. To-be-updated later.
+Python version: 3.12.0
+"""
+
 import os
 import re
 import sys

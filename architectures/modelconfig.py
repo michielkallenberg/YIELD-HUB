@@ -9,16 +9,14 @@ from cybench.config import (
 )
 
 # %% Global constants
-# Weather feature lists - used as defaults by ModelConfig.weather_features property
-# These are module-level constants; actual features used come from config
+# Weather feature lists - used as defaults by ModelConfig.weather_features
 WEATHER_FEATURES_BASE = ['tmin', 'tmax', 'tavg', 'prec', 'rad']
 WEATHER_FEATURES_WITH_CWB = ['tmin', 'tmax', 'tavg', 'prec', 'cwb', 'rad']
 
-# Remote sensing features - always included
+# Remote sensing features
 REMOTE_SENSING_FEATURES = ['fpar', 'ndvi', 'ssm', 'rsm']
 
 STANDARD_STATIC_VARS = SOIL_PROPERTIES + LOCATION_PROPERTIES
-# CROP_CALENDAR_DATES imported from cybench.config
 
 # based on config.weather_features and config.time_series_vars properties
 print(f"[Feature Config] Static vars ({len(STANDARD_STATIC_VARS)}): {STANDARD_STATIC_VARS}")
@@ -30,36 +28,29 @@ class TSTModelConfig:
     country: str = "NL"
     model_type: str = "autoformer"
     aggregation: str = "dekad"
-    season_length: float = 1.0  # Fraction of season to use (0.25, 0.5, 0.75, 1.0)
+    season_length: float = 1.0  
     use_sota_features: bool = False
     include_spatial_features: bool = False
     use_residual_trend: bool = True
-    lag_years: int = 1  # Default to 1, max 2
+    lag_years: int = 1 
     load_checkpoint: Optional[str] = None
     seed: int = 42
     batch_size: int = 16
-    num_workers: int = 0  # Default 0 for HPC compatibility
+    num_workers: int = 0 
     lr: float = 1e-4
     weight_decay: float = 1e-5
     max_epochs: int = 50
     test_years: int = 3
-    # Feature toggles for ablation studies
-    use_cwb_feature: bool = False  # Include climate water balance
-    drop_tavg: bool = False  # Drop tavg if dataset computes it as (tmin+tmax)/2
-    # Recursive lag prediction for true out-of-sample testing
-    use_recursive_lags: bool = False  # Use predicted yields as lags during testing (default: False for backward compat)
-    # Domain feature engineering flags
-    use_gdd: bool = False # GDD time series channel
-    use_heat_stress_days: bool = False  # Heat stress static counts
-    use_rue: bool = False           # RUE index time series channel
-    use_farquhar: bool = False      # Farquhar proxy time series channel
-    # Normalization strategy
-    use_revin: bool = False         # Use RevIN (per-instance) normalization vs global z-score
-    # Results directory for CSV output
+    use_cwb_feature: bool = False  
+    drop_tavg: bool = False 
+    use_recursive_lags: bool = False 
+    use_gdd: bool = False 
+    use_heat_stress_days: bool = False 
+    use_rue: bool = False        
+    use_farquhar: bool = False   
+    use_revin: bool = False       
     results_dir: str = "checkpoints/results"
-    # Optional learning rate scheduler (lambda function for epoch-based decay)
-    lr_scheduler_lambda: Optional[Callable] = None
-    # PatchTST-specific hyperparameters (only used when model_type='patchtst')
+    lr_scheduler_lambda: Optional[Callable] = None 
     patchtst_d_model: int = 64
     patchtst_num_attention_heads: int = 4
     patchtst_ffn_dim: int = 256
@@ -68,16 +59,12 @@ class TSTModelConfig:
 
     @property
     def seq_len(self):
-        """Sequence length derived from aggregation frequency."""
+        # Sequence length derived from aggregation frequency.
         return {"daily": 365, "weekly": 52, "dekad": 36}.get(self.aggregation, 365)
 
     @property
     def weather_features(self) -> List[str]:
-        """
-        Compute the list of weather features based on config flags.
-        This is a computed property instead of a global variable,
-        preventing timing issues where model init captures the wrong value.
-        """
+        # Compute the list of weather features based on config flags.
         features = list(WEATHER_FEATURES_WITH_CWB if self.use_cwb_feature
                        else WEATHER_FEATURES_BASE)
         if self.drop_tavg:
@@ -86,20 +73,17 @@ class TSTModelConfig:
 
     @property
     def time_series_vars(self) -> List[str]:
-        """Full list of time series variables including remote sensing."""
+        # Full list of time series variables including remote sensing.
         return self.weather_features + REMOTE_SENSING_FEATURES
 
     def _compute_expected_static_features(self) -> int:
-        """
-        Compute the total expected static feature count from the current config.
-        This is used in setup() to validate that build_daily_input_sequence()
-        actually produced the right number of features. Any mismatch means a
-        feature creation step failed silently.
-        """
+        # Compute the total expected static feature count from the current config.
+        # Validates if build_daily_input_sequence() is producing the right number of features.
+        # Checks for any mismatch at the feature creation step.
+
         n_soil = len(SOIL_PROPERTIES)
         n_location = len(LOCATION_PROPERTIES)
-        # Crop calendar: sos_date and eos_date use cyclic encoding (2 each),
-        # other dates use 1 feature each
+        # Crop calendar: sos_date and eos_date use cyclic encoding (2 each), other dates use 1 feature each
         n_crop = 0
         for date_name in CROP_CALENDAR_DATES:
             if date_name in ["sos_date", "eos_date"]:
@@ -121,35 +105,29 @@ class LinearModelConfig:
     country: str = "NL"
     model_type: str = "nlinear"
     aggregation: str = "dekad"
-    season_length: float = 1.0  # Fraction of season to use (0.25, 0.5, 0.75, 1.0)
+    season_length: float = 1.0  
     use_sota_features: bool = False
     include_spatial_features: bool = False
     use_residual_trend: bool = True
-    lag_years: int = 1  # Default to 1, max 2 (constrained in CLI)
+    lag_years: int = 1  
     load_checkpoint: Optional[str] = None
     seed: int = 42
     batch_size: int = 16
-    num_workers: int = 0  # Default 0 for HPC compatibility
+    num_workers: int = 0  
     lr: float = 1e-4
     weight_decay: float = 1e-5
     max_epochs: int = 50
     test_years: int = 3
-    # Feature toggles for ablation studies
-    use_cwb_feature: bool = False  # Include crop water balance (redundant with prec+temp)
-    drop_tavg: bool = False  # Drop tavg if dataset computes it as (tmin+tmax)/2
-    use_revin: bool = False  # Use RevIN normalization for XLinear endogenous series
-    # Recursive lag prediction for true out-of-sample testing
-    use_recursive_lags: bool = False  # Use predicted yields as lags during testing (default: False for backward compat)
-    # Domain feature engineering flags
-    use_gdd: bool = False # GDD time series channel
-    use_heat_stress_days: bool = False  # Heat stress static counts
-    use_rue: bool = False # RUE index time series channel
-    use_farquhar: bool = False # Farquhar proxy time series channel
-    # Results directory for CSV output
+    use_cwb_feature: bool = False 
+    drop_tavg: bool = False  
+    use_revin: bool = False 
+    use_recursive_lags: bool = False 
+    use_gdd: bool = False 
+    use_heat_stress_days: bool = False  
+    use_rue: bool = False 
+    use_farquhar: bool = False 
     results_dir: str = "checkpoints/results"
-    # Optional learning rate scheduler (lambda function for epoch-based decay)
     lr_scheduler_lambda: Optional[Callable] = None
-    # XLinear-specific hyperparameters (only used when model_type='xlinear')
     xlinear_hidden_size: int = 64
     xlinear_temporal_ff: int = 128
     xlinear_channel_ff: int = 16
