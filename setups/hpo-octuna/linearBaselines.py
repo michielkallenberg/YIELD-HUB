@@ -1,0 +1,545 @@
+# -*- coding: utf-8 -*-
+"""
+--------------------
+Author: XYZ
+Description: Optuna-based Hyperparameter Optimization applied on time-series transformers architectures.
+Python version: 3.12.0
+--------------------
+Architecture overview: This script implements unified linear baseline architectures that serve as
+strong references for evaluating transformer complexity:
+
+    • NLinear: Simple linear layer with last-value normalization (https://arxiv.org/abs/2205.13504)
+    • DLinear: Decomposed linear (trend + remainder) (https://arxiv.org/abs/2205.13504)
+    • XLinear: Linear with exogenous variable handling (https://arxiv.org/pdf/2305.10721)
+    • RLinear: NLinear with RevIN (Reversible Instance Normalization) (https://arxiv.org/abs/2403.14587)
+
+------------
+Pipeline: The script processes agricultural data through multiple stages:
+
+1. INPUT FEATURES
+   - Weather: tmin, tmax, tavg, precipitation, radiation, (optional: cwb)
+   - Remote Sensing: NDVI, FPAR, SSM, RSM
+   - Soil Properties: Available water capacity, organic carbon, pH, texture
+   - Location: Country, state, latitude, longitude
+   - Crop Calendar: Start/end of season with cyclic encoding (sin/cos)
+   - Temporal Encoding: Fourier features (sin/cos of day-of-year, month)
+   - Historical Lags: Yield from previous years (1-2 years, configurable)
+
+2. TEMPORAL AGGREGATION
+   - daily:   365 time steps (raw daily data)
+   - weekly:  52 time steps  (weekly averages, Monday-start)
+   - dekad:   36 time steps  (10-day periods, standard in ag monitoring)
+
+3. GROWTH-STAGE PROCESSING
+   Weather data is masked to only include observations between crop start-of-season
+   (SOS) and end-of-season (EOS) dates, ensuring the model focuses on the growth
+   period.
+
+4. NORMALIZATION
+   - Time series: Per-feature min-max scaling
+   - Static features: Mean-centering and scaling
+   - Targets: Normalized to zero mean, unit variance
+
+5. IN-SEASON vs END-SEASON predictions
+   – season_length: 0.25 – quarter season predictions
+   – season_length: 0.50 – half season predictions
+   – season_length: 0.75 – three-quarter season predictions
+   – season_length: 1.0 – end-of-season predictions
+
+----------------
+Other optional/advanced features:
+
+1. RESIDUAL TREND MODELING (--use_residual_trend)
+   Uses Mann-Kendall trend detection to identify significant linear trends in
+   training yields, then models residuals (yield - trend) to improve forecasting
+   for datasets with strong yield progression over time.
+
+2. RECURSIVE LAG PREDICTION (--use_recursive_lags)
+   For true out-of-sample testing: uses predicted yields as lag features during
+   test set evaluation instead of ground truth, preventing data leakage.
+
+3. SPATIAL FEATURES (--include_spatial_features)
+   Adds explicit latitude/longitude as static features (beyond location embeddings).
+
+4. FEATURE ABLATION TOGGLES
+   --use_cwb_feature: Include crop water balance (redundant with prec+temp)
+   --drop_tavg: Drop average temperature if dataset computes it as (tmin+tmax)/2
+   --use_gdd : Adds cumulative GDD as a time series channel
+   --use_heat_stress_days: Adds heat/frost/dry stress day counts as static features
+   --use_rue: Adds RUE (Radiation Use Efficiency) index as a time series channel
+   --use_farquhar: Adds Farquhar photosynthesis proxy as a time series channel
+
+-------------
+Training workflow:
+1. Data module handles train/val/test splits and normalization
+2. Lightning trainer manages GPU distribution, mixed precision, checkpoints
+3. Early stopping on validation loss with patience monitoring
+4. Model checkpointing saves best model based on validation loss
+5. WandB logging tracks metrics, hyperparameters, and artifacts
+
+Evaluation metrics:
+    • MSE, MAE, RMSE: Standard error metrics
+    • R²: Coefficient of determination
+    • MAPE, SMAPE: Percentage-based error metrics
+    • NRMSE: Normalized RMSE (test set only)
+
+------
+Output generated:
+    Checkpoints: Saved to checkpoints/ with descriptive filenames
+    Results CSV: Detailed predictions with actuals, errors, metadata
+    HPO Results: Text file and CSV with best hyperparameters
+
+--------------
+Usage:
+# Basic HPO with NLinear
+    python linearBaselines.py --crop maize --country NL --model_type nlinear --n_trials 10 --epochs 3 --hpo_objective multi
+
+# HPO with XLinear (includes model-specific hyperparameters)
+    python linearBaselines.py --crop maize --country NL --model_type xlinear --n_trials 50 --epochs 5 --hpo_objective nrmse --hpo_results_file checkpoints-test/results/HPO/octuna_file.txt --hpo_study_name test-and-delete-later
+
+# Quick test run (2 trials)
+    python linearBaselines.py --crop wheat --country NL --model_type nlinear --n_trials 4 --epochs 2 --results_dir checkpoints-test/results --season_length 0.50
+
+--------------------
+Hyperparameters:
+    --lr:              Learning rate (default: 1e-4)
+    --weight_decay:    L2 regularization (default: 1e-5)
+    --batch_size:      Training batch size (default: 16)
+    --lag_years:       Historical yield lags (1 or 2, default: 1)
+    --aggregation:     Temporal resolution (daily/weekly/dekad, default: dekad)
+    --seed:            Random seed for reproducibility (default: 42)
+    --season_length:   Season length fed to the model (default: 1 – full season)
+    --use_revin:       Enable RevIN normalization for XLinear (default: False)
+
+
+------------
+Core dependencies:
+    - torch>=2.0: PyTorch for model implementation
+    - lightning: PyTorch Lightning for training framework
+    - torchmetrics: Evaluation metrics
+    - optuna: Hyperparameter optimization framework
+    - pymannkendall: Trend detection for residual modeling
+    - pandas, numpy: Data manipulation
+"""
+
+import os
+import sys
+import random
+import argparse
+import logging
+import uuid
+import csv
+
+from datetime import datetime
+from typing import Optional, Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
+import optuna
+
+# Configure module-level logger BEFORE any imports that might use it
+logger = logging.getLogger(__name__)
+
+import torch
+
+from lightning.pytorch import Trainer
+from lightning.pytorch.loggers import WandbLogger, CSVLogger
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+
+# CY-BENCH Dependencies
+from cybench.datasets.configured import load_dfs_crop
+from cybench.datasets.dataset import Dataset as CYDataset
+from cybench.config import (
+    LOCATION_PROPERTIES, SOIL_PROPERTIES,
+    FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
+    CROP_CALENDAR_DATES
+)
+
+# Loading custom functions and classes
+sys.path.append('../../process/')
+from helpers import generate_checkpoint_name, save_test_results_to_csv
+from validateModel import print_metrics_table
+from loadData import calculate_fixed_split, DailyCYBenchSeqDataModule
+from hpoOptuna import print_best_results, save_results_to_file, save_best_params_to_csv, run_hpo
+
+sys.path.append('../../architectures/')
+from modelconfig import LinearModelConfig
+from linearLayer import create_model
+
+# Set matmul precision conditionally based on GPU capability
+if torch.cuda.is_available():
+    capability = torch.cuda.get_device_capability()
+    if capability[0] >= 8:  # Ampere or newer
+        torch.set_float32_matmul_precision('high')
+        logger.info(f"Enabled high matmul precision (GPU capability {capability})")
+    else:
+        logger.info(f"Keeping default matmul precision (GPU capability {capability} < 8.0)")
+else:
+    logger.info("Running on CPU, matmul precision setting has no effect")
+
+# Boilerplate code
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="CY-BENCH Time Series Yield Forecasting with Linear Baseline Models and HPO")
+    parser.add_argument('--crop', default="maize")
+    parser.add_argument('--country', default="NL")
+    parser.add_argument('--model_type', default="nlinear",
+                        choices=['nlinear', 'dlinear', 'xlinear', 'rlinear', 'olinear'])
+    parser.add_argument('--aggregation', default="dekad",
+                        choices=['daily', 'weekly', 'dekad'])
+    parser.add_argument('--season_length', type=float, default=1.0,
+                        choices=[0.25, 0.5, 0.75, 1.0],
+                        help='Fraction of season to use for prediction (default: 1.0 = full season). '
+                             '0.25 = quarter, 0.5 = half, 0.75 = three-quarters, 1.0 = full')
+    parser.add_argument('--use_sota_features', action='store_true')
+    parser.add_argument('--include_spatial_features', action='store_true')
+    parser.add_argument('--lag_years', type=int, default=1, choices=[0, 1, 2],
+                        help='Number of lagged yield years (max 2, default: 1)')
+    # Domain feature engineering flags
+    parser.add_argument('--use_gdd', action='store_true',
+                        help='Add cumulative GDD as a time series channel. '
+                             'Uses crop-specific base/upper thresholds from cybench.config. '
+                             'GDD = max(min(Tavg, Tupper) - Tbase, 0), then cumsum.')
+    parser.add_argument('--use_heat_stress_days', action='store_true',
+                        help='Add heat/frost/dry stress day counts as static features. '
+                             'Captures threshold exceedance events missed by averages.')
+    parser.add_argument('--use_rue', action='store_true',
+                        help='Add RUE (Radiation Use Efficiency) index as a time series channel. '
+                             'RUE = cumPAR * T_stress * W_stress. Experimental.')
+    parser.add_argument('--use_farquhar', action='store_true',
+                        help='Add Farquhar photosynthesis proxy as a time series channel. '
+                             'Based on FvCB C3 model. Seasonal-scale approximation only.')
+    parser.add_argument('--results_dir', default='checkpoints/results',
+                        help='Directory to save CSV results (default: checkpoints/results/)')
+    parser.add_argument('--epochs', type=int, default=50,
+                        help='Maximum training epochs (default: 50)')
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--weight_decay', type=float, default=1e-5)
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--use_residual_trend', action='store_true')
+    parser.add_argument('--use_recursive_lags', action='store_true',
+                        help='Use predicted yields as lags during testing (true out-of-sample)')
+    parser.add_argument('--num_workers', type=int, default=None,
+                        help='DataLoader workers. Default: auto-calculated as min(cpu_count//4, 8). '
+                             'For 3 concurrent scripts, this balances CPU usage. Set manually to override.')
+    parser.add_argument('--test_years', type=int, default=3,
+                        help='Number of years for final test set (default: 3)')
+    # Feature configuration flags
+    parser.add_argument('--use_cwb_feature', action='store_true',
+                        help='Include crop water balance (cwb) as a feature')
+    parser.add_argument('--drop_tavg', action='store_true',
+                        help='Drop tavg feature')
+    parser.add_argument('--use_revin', action='store_true',
+                        help='Use RevIN normalization for XLinear endogenous series')
+    parser.add_argument('--lr_decay_every', type=int, default=None,
+                        help='Decay learning rate by half every N epochs (default: None, no decay)')
+    parser.add_argument('--save_checkpoint_dir', default='checkpoints-linear',
+                        help='Directory to save model checkpoints')
+    # XLinear-specific hyperparameters (only used when model_type='xlinear')
+    parser.add_argument('--xlinear_hidden_size', type=int, default=64,
+                        help='XLinear: dimension of hidden embeddings for all linear layers (default: 64)')
+    parser.add_argument('--xlinear_temporal_ff', type=int, default=128,
+                        help='XLinear: feed-forward dimension in the Time-wise Gating Module (default: 128)')
+    parser.add_argument('--xlinear_channel_ff', type=int, default=16,
+                        help='XLinear: feed-forward dimension in the Variate-wise Gating Module (default: 16)')
+    parser.add_argument('--xlinear_dropout', type=float, default=0.1,
+                        help='XLinear: dropout probability for regularization (default: 0.1)')
+    # Optuna HPO arguments
+    parser.add_argument('--n_trials', type=int, default=50,
+                        help='Number of Optuna trials (default: 50)')
+    parser.add_argument('--hpo_storage', type=str, default=None,
+                        help='Optuna storage URL for distributed optimization (e.g., sqlite:///optuna.db)')
+    parser.add_argument('--hpo_study_name', type=str, default=None,
+                        help='Optuna study name (default: auto-generated)')
+    parser.add_argument('--hpo_results_file', type=str, default=None,
+                        help='Path to save HPO results text file (default: auto-generated in results_dir)')
+    parser.add_argument('--hpo_objective', type=str, default='nrmse',
+                        choices=['nrmse', 'r2', 'multi'],
+                        help='Optimization objective: nrmse (minimize), r2 (maximize), or multi (both)')
+    args = parser.parse_args()
+
+    # Set num_workers if not specified
+    if args.num_workers is None:
+        cpu_count = os.cpu_count() or 1
+        # For 3 concurrent scripts: divide by 4, cap at 8 for balance – gives good parallelism without overflooding the memory of the system
+        args.num_workers = min(cpu_count // 4, 8)
+        print(f"[Auto-config] Setting num_workers={args.num_workers} based on {cpu_count} CPU cores")
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
+    # Generate unique run identifier and timestamp for CSV tracking
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_id = str(uuid.uuid4())[:8]  # Short unique identifier
+
+    print(f"\n{'=' * 70}")
+    print(f"CY-BENCH HPO  |  {args.model_type.upper()}  |  {args.crop}-{args.country}  "
+          f"|  {args.aggregation.upper()}")
+    print(f"  SeasonLength={args.season_length}  SOTA={args.use_sota_features}  "
+          f"Spatial={args.include_spatial_features}  Lag={args.lag_years}  RevIN={args.use_revin}")
+    print(f"  RecursiveLags={args.use_recursive_lags}  ResidualTrend={args.use_residual_trend}")
+    print(f"  Domain features: GDD={args.use_gdd}  HeatStress={args.use_heat_stress_days}  "
+          f"RUE={args.use_rue}  Farquhar={args.use_farquhar}")
+    print(f"  TestYears={args.test_years}")
+    print(f"  Trials={args.n_trials}  Objective={args.hpo_objective}")
+    print(f"{'=' * 70}\n")
+
+    # Create LR scheduler lambda if requested
+    lr_scheduler_lambda = None
+    if args.lr_decay_every is not None:
+        def lr_scheduler_lambda(epoch):
+            decay_factor = args.lr_decay_every
+            decay_steps = epoch // decay_factor
+            return 0.5 ** decay_steps
+
+    # Get available years
+    df_y, dfs_x = load_dfs_crop(args.crop, [args.country])
+    if df_y is None or len(df_y) == 0:
+        print(f"[ERROR] No data for {args.crop}-{args.country}")
+        sys.exit(1)
+
+    ds = CYDataset(args.crop, df_y, dfs_x)
+    all_years = sorted(set([ds[i][KEY_YEAR] for i in range(len(ds))]))
+    print(f"[Data] Available years: {all_years}")
+
+    # Calculate fixed train/val/test split
+    fixed_splits = calculate_fixed_split(
+        all_years,
+        test_years=args.test_years,
+        val_years=2
+    )
+
+    print(f"\n[Split Config - Fixed]")
+    print(f"  Total years: {fixed_splits['total_years']}")
+    print(f"  Train years ({len(fixed_splits['train_years'])}): {sorted(fixed_splits['train_years'])}")
+    print(f"  Val years ({len(fixed_splits['val_years'])}): {sorted(fixed_splits['val_years'])}")
+    print(f"  Test years ({len(fixed_splits['test_years'])}): {sorted(fixed_splits['test_years'])}")
+
+    # ==================== OPTUNA HPO INTEGRATION ====================
+    print(f"\n{'=' * 70}")
+    print(f"OPTUNA HYPERPARAMETER OPTIMIZATION")
+    print(f"{'=' * 70}\n")
+
+    # Auto-generate HPO results file path if not provided
+    if args.hpo_results_file is None:
+        hpo_results_dir = os.path.join(args.results_dir, "HPO")
+        os.makedirs(hpo_results_dir, exist_ok=True)
+        hpo_results_file = os.path.join(hpo_results_dir,
+            f"{args.model_type}_{args.crop}_{args.country}_HPO_results_{timestamp}.txt")
+    else:
+        hpo_results_file = args.hpo_results_file
+        # Create directory if it doesn't exist
+        hpo_results_dir = os.path.dirname(hpo_results_file)
+        if hpo_results_dir:  # Only create if there's a directory component
+            os.makedirs(hpo_results_dir, exist_ok=True)
+
+    # Auto-generate study name if not provided
+    if args.hpo_study_name is None:
+        study_name = f"{args.model_type}_{args.crop}_{args.country}_{args.aggregation}"
+    else:
+        study_name = args.hpo_study_name
+
+    print(f"[HPO Config]")
+    print(f"  Objective: {args.hpo_objective}")
+    print(f"  Trials: {args.n_trials}")
+    print(f"  Study name: {study_name}")
+    print(f"  Results file: {hpo_results_file}")
+    print(f"  Storage: {args.hpo_storage if args.hpo_storage else 'In-memory'}")
+
+    def optuna_objective(trial):
+        """Optuna objective function for hyperparameter optimization"""
+        if args.model_type == 'xlinear':
+            xlinear_hidden_size = trial.suggest_categorical('xlinear_hidden_size', [32, 64, 128, 256])
+            xlinear_temporal_ff = trial.suggest_categorical('xlinear_temporal_ff', [64, 128, 256, 512])
+            xlinear_channel_ff = trial.suggest_categorical('xlinear_channel_ff', [8, 16, 32, 64])
+            xlinear_dropout = trial.suggest_float('xlinear_dropout', 0.0, 0.5)
+
+            # Shared hyperparameters
+            batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
+            lr = trial.suggest_float('lr', 5e-5, 5e-4, log=True)
+            weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-4, log=True)
+            seed = trial.suggest_categorical('seed', [42, 100, 500, 1111, 5555])
+
+            # Create config with suggested parameters
+            hpo_config = LinearModelConfig(
+                crop=args.crop, country=args.country,
+                model_type=args.model_type, aggregation=args.aggregation,
+                season_length=args.season_length,
+                use_sota_features=args.use_sota_features,
+                include_spatial_features=args.include_spatial_features,
+                lag_years=args.lag_years,
+                load_checkpoint=None,  # Never load checkpoint during HPO
+                seed=seed, batch_size=batch_size,
+                num_workers=args.num_workers,
+                max_epochs=args.epochs, lr=lr, weight_decay=weight_decay,
+                test_years=args.test_years,
+                use_residual_trend=args.use_residual_trend,
+                use_recursive_lags=args.use_recursive_lags,
+                use_gdd=args.use_gdd,
+                use_heat_stress_days=args.use_heat_stress_days,
+                use_rue=args.use_rue,
+                use_farquhar=args.use_farquhar,
+                use_cwb_feature=args.use_cwb_feature,
+                drop_tavg=args.drop_tavg,
+                use_revin=args.use_revin,
+                results_dir=args.results_dir,
+                lr_scheduler_lambda=lr_scheduler_lambda,
+                xlinear_hidden_size=xlinear_hidden_size,
+                xlinear_temporal_ff=xlinear_temporal_ff,
+                xlinear_channel_ff=xlinear_channel_ff,
+                xlinear_dropout=xlinear_dropout,
+            )
+        else:
+            # For other linear models, only tune shared hyperparameters
+            batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
+            lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)
+            weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-4, log=True)
+            seed = trial.suggest_categorical('seed', [42, 100, 500, 1111, 5555])
+
+            hpo_config = LinearModelConfig(
+                crop=args.crop, country=args.country,
+                model_type=args.model_type, aggregation=args.aggregation,
+                season_length=args.season_length,
+                use_sota_features=args.use_sota_features,
+                include_spatial_features=args.include_spatial_features,
+                lag_years=args.lag_years,
+                load_checkpoint=None,
+                seed=seed, batch_size=batch_size,
+                num_workers=args.num_workers,
+                max_epochs=args.epochs, lr=lr, weight_decay=weight_decay,
+                test_years=args.test_years,
+                use_residual_trend=args.use_residual_trend,
+                use_recursive_lags=args.use_recursive_lags,
+                use_gdd=args.use_gdd,
+                use_heat_stress_days=args.use_heat_stress_days,
+                use_rue=args.use_rue,
+                use_farquhar=args.use_farquhar,
+                use_cwb_feature=args.use_cwb_feature,
+                drop_tavg=args.drop_tavg,
+                use_revin=args.use_revin,
+                results_dir=args.results_dir,
+                lr_scheduler_lambda=lr_scheduler_lambda,
+                xlinear_hidden_size=args.xlinear_hidden_size,
+                xlinear_temporal_ff=args.xlinear_temporal_ff,
+                xlinear_channel_ff=args.xlinear_channel_ff,
+                xlinear_dropout=args.xlinear_dropout,
+            )
+
+        # Create datamodule
+        dm = DailyCYBenchSeqDataModule(hpo_config)
+        dm.setup(
+            train_years=fixed_splits['train_years'],
+            val_years=fixed_splits['val_years'],
+            test_years=fixed_splits['test_years']
+        )
+
+        # Create model
+        model = create_model(hpo_config)
+
+        # Setup callbacks for HPO (faster training)
+        hpo_callbacks = [
+            EarlyStopping(monitor='val_loss', patience=5, mode='min', verbose=False),
+            LearningRateMonitor(logging_interval='epoch'),
+        ]
+
+        # CSV logger for each trial
+        trial_logger = CSVLogger("logs/", name=f"cybench-hpo-{trial.number}")
+
+        # Create trainer
+        trainer = Trainer(
+            max_epochs=hpo_config.max_epochs,
+            accelerator="gpu" if torch.cuda.is_available() else "cpu",
+            devices=1,
+            callbacks=hpo_callbacks,
+            logger=[trial_logger],
+            log_every_n_steps=50,
+            enable_progress_bar=False,
+            enable_model_summary=False,
+            enable_checkpointing=False,
+        )
+
+        # Train
+        print(f"\n[Trial {trial.number}] Training with hyperparameters...")
+        try:
+            trainer.fit(model, dm)
+
+            # Get validation metrics
+            val_metrics = trainer.validate(model, dm)
+            if val_metrics:
+                val_results = val_metrics[0]
+
+                # Handle different objectives
+                if args.hpo_objective == 'nrmse':
+                    return val_results.get('val/nrmse', float('inf'))
+                elif args.hpo_objective == 'r2':
+                    return val_results.get('val/r2', -float('inf'))  # Return r2 directly for maximization
+                elif args.hpo_objective == 'multi':
+                    # Multi-objective: return tuple (nrmse, r2)
+                    nrmse = val_results.get('val/nrmse', float('inf'))
+                    r2 = val_results.get('val/r2', -float('inf'))
+                    return nrmse, r2  # Return r2 directly for maximization
+            else:
+                if args.hpo_objective == 'multi':
+                    return float('inf'), float('inf')
+                else:
+                    return float('inf')
+        except Exception as e:
+            print(f"[Trial {trial.number}] Failed: {e}")
+            if args.hpo_objective == 'multi':
+                return float('inf'), float('inf')
+            else:
+                return float('inf')
+
+    # Enqueue default baseline configuration for comparison
+    baseline_params = None
+    if args.model_type == 'xlinear':
+        baseline_params = {
+            'xlinear_hidden_size': 64,
+            'xlinear_temporal_ff': 128,
+            'xlinear_channel_ff': 16,
+            'xlinear_dropout': 0.1,
+            'batch_size': 16,
+            'lr': 1e-4,
+            'weight_decay': 1e-5,
+            'seed': 42,
+        }
+
+    # Run optimization
+    study = run_hpo(
+        objective=optuna_objective,
+        study_name=study_name,
+        hpo_objective=args.hpo_objective,
+        n_trials=args.n_trials,
+        storage=args.hpo_storage,
+        baseline_params=baseline_params,
+    )
+
+    # Print and save results
+    print_best_results(study, args.hpo_objective)
+
+    # Save results to text file
+    save_results_to_file(
+        study, hpo_results_file, args.model_type, args.crop, args.country,
+        study_name, args.hpo_objective, timestamp
+    )
+
+    print(f"\n[HPO] Results saved to: {hpo_results_file}")
+
+    # Save best hyperparameters to CSV files
+    os.makedirs(args.save_checkpoint_dir, exist_ok=True)
+    save_best_params_to_csv(study, args.save_checkpoint_dir, args.hpo_objective)
+    if args.hpo_objective == 'multi':
+        csv_rmse_path = os.path.join(args.save_checkpoint_dir, 'optuna_rmse.csv')
+        csv_r2_path = os.path.join(args.save_checkpoint_dir, 'optuna_r2.csv')
+        print(f"[HPO] Best RMSE hyperparameters saved to: {csv_rmse_path}")
+        print(f"[HPO] Best R² hyperparameters saved to: {csv_r2_path}")
+
+    # Print completion message
+    print(f"\n{'=' * 70}")
+    print(f"HPO Experiment complete: {args.crop}-{args.country}")
+    print(f"  Model: {args.model_type}")
+    print(f"  Aggregation: {args.aggregation}")
+    print(f"  Trials: {args.n_trials}")
+    print(f"{'=' * 70}\n")
