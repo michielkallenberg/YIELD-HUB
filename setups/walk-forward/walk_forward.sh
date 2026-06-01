@@ -187,7 +187,7 @@ for crop in "${crops[@]}"; do
                 --country "$country"
                 --model_type "$model"
                 --aggregation daily
-                --epochs 2
+                --epochs 100
                 --drop_tavg
                 --test_years 5
                 "${model_flags[@]}"
