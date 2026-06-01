@@ -290,14 +290,14 @@ yield-hub-predict predict --model-type rlinear --crop maize --country NL --data-
 # Model training and evaluation
 
 Depending upon the setup of interest:
-1. Temporal Split with the last 5 years as test dataset, the 2 years before for the validation data, and rest as training data (train/temporal)
-2. Performing Hyperparameter Optimization using Optuna (train/hpo)
-3. Walk Forward Setup with the last 5 years as the test dataset (train/walk-forward)
+1. Temporal Split with the last 5 years as test dataset, the 2 years before for the validation data, and rest as training data (setups/temporal)
+2. Performing Hyperparameter Optimization using Optuna (setups/hpo)
+3. Walk Forward Setup with the last 5 years as the test dataset (setups/walk-forward)
 
 Run
 
 ```
-cd train/temporal
+cd setups/temporal
 python statisticalBaselines.py --model mlp --country DE --crop wheat --seed 1111 --save_dir ../output/saved_models/ --output_dir ../output/trained_models/
 python tstBaselines.py --crop maize --country NL --model_type tst --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily --include_spatial_features
 python linearBaselines.py --crop maize --country NL --model_type xlinear --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily --include_spatial_features
@@ -305,7 +305,7 @@ python linearBaselines.py --crop maize --country NL --model_type xlinear --use_s
 
 Alternatively, feel free to use the bash script if you are working with SLURM to train all the baselines together:
 ```
-cd train/temporal
+cd setups/temporal
 sbatch run_baselines.sh
 ```
 
