@@ -203,6 +203,7 @@ for crop in "${crops[@]}"; do
                 --results_dir "$checkpoint_save_dir"
                 --wandb_project "AAAI2027-CYP-HPO-without"
                 --run_id "$RUN_ID"
+                --forecast_type "end-of-season"
             )
 
             run_model \

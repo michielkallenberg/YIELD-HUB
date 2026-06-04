@@ -1,7 +1,14 @@
 """
 --------------------
 Author: XYZ
-Description: Helper functions that I couldn't decide where to put. To-be-updated later.
+Description: Helper functions for the CY-BENCH yield forecasting pipeline.
+
+This file contains utility functions organized into sections:
+1. Parameter verification and selection
+2. Checkpoint management
+3. HPO (Hyperparameter Optimization) results loading
+4. Lead time calculation helpers
+
 Python version: 3.12.0
 """
 
@@ -228,3 +235,104 @@ def get_hps_for_model_crop_region(
     key = f"{model}-{region}-{crop}"
     all_hps = load_all_hps(results_dir)
     return all_hps.get(key, {})
+
+
+# Lead time function
+def add_cutoff_days(df: pd.DataFrame, lead_time: str) -> pd.DataFrame:
+    """Add a column with cutoff days relative to end of season.
+
+    This function converts a lead_time string into the number of days before
+    harvest when the forecast should be made.
+
+    Args:
+        df (pd.DataFrame): DataFrame with season_length column
+        lead_time (str): Lead time option. Choices:
+            - "end-of-season": Forecast at harvest (cutoff_days = 0)
+            - "three-quarter-of-season": Forecast at 75% through season
+            - "middle-of-season": Forecast at 50% through season (default)
+            - "quarter-of-season": Forecast at 25% through season
+            - "N-days": Forecast N days before harvest (e.g., "60-days")
+
+    Returns:
+        pd.DataFrame: The same DataFrame with cutoff_days column added
+
+    Examples:
+        >>> df = pd.DataFrame({'season_length': [120]})
+        >>> add_cutoff_days(df, "middle-of-season")
+        # Adds cutoff_days = 60 (half of 120)
+        >>> add_cutoff_days(df, "60-days")
+        # Adds cutoff_days = 60
+    """
+    if "day" in lead_time:
+        df["cutoff_days"] = int(lead_time.split("-")[0])
+    else:
+        assert "season" in lead_time, f'Unrecognized lead time "{lead_time}"'
+        if lead_time == "end-of-season":
+            df["cutoff_days"] = 0
+        elif lead_time == "three-quarter-of-season":
+            df["cutoff_days"] = (df["season_length"] // 4).astype(int)
+        elif lead_time == "middle-of-season":
+            df["cutoff_days"] = (df["season_length"] // 2).astype(int)
+        elif lead_time == "quarter-of-season":
+            df["cutoff_days"] = (df["season_length"] * 3 // 4).astype(int)
+        else:
+            raise Exception(f'Unrecognized lead time "{lead_time}"')
+
+    return df
+
+
+def compute_cutoff_date(eos_date: pd.Timestamp, lead_time: str,
+                       season_length: int) -> pd.Timestamp:
+    """Compute the cutoff date for a given lead time.
+
+    This function calculates when (what date) to make the forecast based on
+    the lead time setting and end of season date.
+
+    Args:
+        eos_date (pd.Timestamp): End of season date
+        lead_time (str): Lead time option
+        season_length (int): Length of the season in days
+
+    Returns:
+        pd.Timestamp: The cutoff date when the forecast should be made
+
+    Examples:
+        >>> from datetime import datetime
+        >>> eos = pd.Timestamp("2024-09-30")
+        >>> compute_cutoff_date(eos, "middle-of-season", 120)
+        # Returns Timestamp around mid-July (60 days before Sept 30)
+        >>> compute_cutoff_date(eos, "end-of-season", 120)
+        # Returns Timestamp("2024-09-30") (no change)
+    """
+    if "day" in lead_time:
+        cutoff_days = int(lead_time.split("-")[0])
+    elif lead_time == "end-of-season":
+        cutoff_days = 0
+    elif lead_time == "three-quarter-of-season":
+        cutoff_days = season_length // 4
+    elif lead_time == "middle-of-season":
+        cutoff_days = season_length // 2
+    elif lead_time == "quarter-of-season":
+        cutoff_days = season_length * 3 // 4
+    else:
+        raise ValueError(f'Unrecognized lead time "{lead_time}"')
+
+    return eos_date - pd.Timedelta(days=cutoff_days)
+
+
+def get_effective_lead_time() -> str:
+    """Get the effective forecast lead time from config.
+
+    This function imports and calls get_forecast_type() from cybench.config
+    to get the current forecast type setting (either the override or default).
+
+    Returns:
+        str: The effective forecast type setting
+
+    Note:
+        This function is a wrapper that allows the process folder to access
+        forecast type settings without directly importing from cybench.datasets.alignment.
+        The function name uses 'lead_time' for backward compatibility with existing code.
+    """
+    from cybench.config import get_forecast_type
+    return get_forecast_type()

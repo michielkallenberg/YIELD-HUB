@@ -45,10 +45,9 @@ The script processes agricultural data through multiple stages:
    - Targets: Normalized to zero mean, unit variance
 
 5. IN-SEASON vs END-SEASON predictions
-   – season_length: 0.25 – quarter season predictions
-   – season_length: 0.50 – half season predictions
-   – season_length: 0.75 – three-quarter season predictions
-   – season_length: 1.0 – end-of-season predictions
+   – --forecast_type: When to make the prediction (end-of-season, three-quarter-of-season,
+                      middle-of-season, quarter-of-season).
+   Controls what portion of the season is observed before forecasting.
 
 --------------------
 Other optional/advanced features:
@@ -99,7 +98,7 @@ Key hyperparameters:
     --lag_years:       Historical yield lags (1 or 2, default: 1)
     --aggregation:     Temporal resolution (daily/weekly/dekad, default: dekad)
     --seed:            Random seed for reproducibility (default: 42)
-    --season_length:   Season length fed to the model (default: 1 – full season)
+    --forecast_type:   When to make the prediction (default: end-of-season)
 
 --------------
 Usage:
@@ -109,7 +108,8 @@ Usage:
     python tstBaselines.py --crop maize --country NL --model_type tst --use_sota_features --use_residual_trend --use_recursive_lags --use_cwb_feature --aggregation daily
 
 # Quick test run (5 epochs)
-    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 2 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --wandb_project test-and-delete-later --save_checkpoint_dir checkpoints-test/results --season_length 0.25
+    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 3 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --save_checkpoint_dir checkpoints-test/results --wandb_project test-and-delete-later --forecast_type end-of-season
+    python tstBaselines.py --crop wheat --country NL --model_type informer --epochs 3 --aggregation daily --lag_years 0 --test_years 5 --results_dir checkpoints-test/results --save_checkpoint_dir checkpoints-test/results --wandb_project test-and-delete-later --forecast_type middle-of-season
 
 ------------
 Core dependencies:
@@ -148,21 +148,34 @@ import torch
 
 from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import WandbLogger, CSVLogger
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 
 # CY-BENCH Dependencies
-from cybench.datasets.configured import load_dfs_crop
-from cybench.datasets.dataset import Dataset as CYDataset
-from cybench.config import (LOCATION_PROPERTIES, SOIL_PROPERTIES,
-    FORECAST_LEAD_TIME, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
+import cybench.config
+from cybench.config import (
+    LOCATION_PROPERTIES, SOIL_PROPERTIES,
+    FORECAST_TYPE, set_forecast_type, KEY_LOC, KEY_YEAR, KEY_TARGET, KEY_DATES, KEY_CROP_SEASON,
     CROP_CALENDAR_DATES
 )
+
+# Important: The original cybench alignment file doesn't handle for ex:- "end-of-season" lead_time. 
+# Since I wanted the forecast_type to be a categorical value between 'end-of-season', 'three-quarter-of-season', 'middle-of-season', and 'quarter-of-season'
+# It is important to set FORECAST_LEAD_TIME to 0-days to load full season data, and then trim it after.
+cybench.config.FORECAST_LEAD_TIME = "0-days"
+
+# Apply the alignment patch beofre importing datasets 
+from cybench.process.alignment_patch import patch_alignment
+patch_alignment()
+
+# Import the datasets (after patching is in place)
+from cybench.datasets.configured import load_dfs_crop
+from cybench.datasets.dataset import Dataset as CYDataset
 
 # Loading custom functions and classes
 sys.path.append('../../process/')
 from helpers import generate_checkpoint_name, save_test_results_to_csv
 from validateModel import print_metrics_table, run_walk_forward_validation
 from loadData import calculate_fixed_split, DailyCYBenchSeqDataModule
+from alignment_patch import verify_forecast_horizon_config
 
 sys.path.append('../../architectures/')
 from modelconfig import TSTModelConfig
@@ -189,10 +202,6 @@ if __name__ == "__main__":
                         choices=['autoformer', 'patchtst', 'tsmixer', 'informer', 'tst', 'itransformer', 'timexer', 'timesnet'])
     parser.add_argument('--aggregation', default="dekad",
                         choices=['daily', 'weekly', 'dekad'])
-    parser.add_argument('--season_length', type=float, default=1.0,
-                        choices=[0.25, 0.5, 0.75, 1.0],
-                        help='Fraction of season to use for prediction (default: 1.0 = full season). '
-                             '0.25 = quarter, 0.5 = half, 0.75 = three-quarters, 1.0 = full')
     parser.add_argument('--use_sota_features', action='store_true')
     parser.add_argument('--include_spatial_features', action='store_true')
     parser.add_argument('--lag_years', type=int, default=1, choices=[0, 1, 2],
@@ -248,6 +257,13 @@ if __name__ == "__main__":
                         help='Custom WandB run name (default: model_type-crop-country)')
     parser.add_argument('--run_id', default=None,
                         help='Custom run ID for checkpoint naming and results tracking (default: auto-generated UUID)')
+    parser.add_argument('--forecast_type', default="end-of-season",
+                        choices=['end-of-season', 'three-quarter-of-season', 'middle-of-season',
+                                 'quarter-of-season'],
+                        help='When to make the prediction (default: end-of-season). '
+                             'Controls what portion of the season is observed before forecasting: '
+                             'end-of-season (100%%), three-quarter-of-season (75%%), '
+                             'middle-of-season (50%%), quarter-of-season (25%%).')
     # PatchTST-specific hyperparameters (only used when model_type='patchtst')
     parser.add_argument('--patchtst_d_model', type=int, default=64,
                         help='PatchTST: dimension of the transformer hidden states (default: 64)')
@@ -260,6 +276,21 @@ if __name__ == "__main__":
     parser.add_argument('--patchtst_dropout', type=float, default=0.1,
                         help='PatchTST: dropout probability for regularization (default: 0.1)')
     args = parser.parse_args()
+
+    # The original alignment.py in cybench repo only supports "middle-of-season", "quarter-of-season", and "N-days" predictions. Since, we wanted to have "middle-of-season", "quarter-of-season", "end-of-season" and "three-quarter-of-season", we set lead_time to "0-days" which makes alignment.py load
+    # the full season (SOS to EOS). The actual forecast timing is then controlled via data_fraction parameter below during feature building.
+    set_forecast_type("0-days")
+    print(f"[Forecast Type] {args.forecast_type}")
+
+    # Map forecast_type to data_fraction (portion of season data to use)
+    forecast_to_fraction = {
+        'end-of-season': 1.0,           # 100% of season observed
+        'three-quarter-of-season': 0.75, # 75% of season observed
+        'middle-of-season': 0.5,        # 50% of season observed
+        'quarter-of-season': 0.25,      # 25% of season observed
+    }
+    data_fraction = forecast_to_fraction[args.forecast_type]
+    print(f"[Data Fraction] Using {data_fraction:.0%} of season data (from SOS to EOS)")
 
     # Set num_workers if not specified
     if args.num_workers is None:
@@ -299,7 +330,7 @@ if __name__ == "__main__":
     config = TSTModelConfig(
         crop=args.crop, country=args.country,
         model_type=args.model_type, aggregation=args.aggregation,
-        season_length=args.season_length,
+        data_fraction=data_fraction,
         use_sota_features=args.use_sota_features,
         include_spatial_features=args.include_spatial_features,
         lag_years=args.lag_years,
@@ -327,6 +358,9 @@ if __name__ == "__main__":
 
     print(f"[Feature Config] Weather features: {config.weather_features}")
     print(f"[Feature Config] Total time series vars ({len(config.time_series_vars)}): {config.time_series_vars}")
+
+    # Show forecast horizon configuration
+    verify_forecast_horizon_config(config)
 
     # Create checkpoint directory if it doesn't exist
     os.makedirs(args.save_checkpoint_dir, exist_ok=True)

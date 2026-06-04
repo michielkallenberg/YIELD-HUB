@@ -187,7 +187,7 @@ for crop in "${crops[@]}"; do
                 --country "$country"
                 --model_type "$model"
                 --aggregation daily
-                --epochs 100
+                --epochs 2
                 --drop_tavg
                 --test_years 5
                 "${model_flags[@]}"
@@ -196,6 +196,7 @@ for crop in "${crops[@]}"; do
                 --results_dir "$checkpoint_save_dir"
                 --wandb_project "AAAI2027-CYP-WF"
                 --run_id "$RUN_ID"
+                --forecast_type "end-of-season"
             )
 
             run_model \

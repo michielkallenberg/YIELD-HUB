@@ -199,6 +199,7 @@ for crop in "${crops[@]}"; do
                --save_checkpoint_dir modelCheckpoints/yield-$model-cybench/$country/$crop/
                --wandb_project AAAI2027-CYP
                --results_dir "$tmp_dir"
+               --forecast_type "end-of-season"
            )
 
            run_model \
@@ -243,6 +244,8 @@ for crop in "${crops[@]}"; do
                --wandb_project AAAI2027-CYP
                --save_checkpoint_dir modelCheckpoints/yield-$model-cybench/$country/$crop/
                --results_dir "$tmp_dir"
+               --forecast_type "end-of-season"
+
            )
 
            run_model \

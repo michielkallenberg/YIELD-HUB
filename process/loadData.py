@@ -228,7 +228,7 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
                 X_ts, X_static, y, meta, mask = build_daily_input_sequence(
                     ds, sample[KEY_LOC], sample[KEY_YEAR],
                     aggregation=cfg.aggregation,
-                    season_length=cfg.season_length,
+                    data_fraction=cfg.data_fraction,
                     use_sota_features=cfg.use_sota_features,
                     include_spatial_features=cfg.include_spatial_features,
                     lag_years=cfg.lag_years,

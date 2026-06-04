@@ -383,18 +383,15 @@ def _compute_heat_stress_counts(tavg_series: np.ndarray,
     }
 
 def _get_aggregation_params(aggregation: str, year: int,
-                             crop_season_info=None, season_length: float = 1.0) -> Tuple[pd.DatetimeIndex, int, str]:
+                             crop_season_info=None, data_fraction: float = 1.0) -> Tuple[pd.DatetimeIndex, int, str]:
     """
     Return target DatetimeIndex, sequence length, and frequency string.
-
-    Fragile period-then-filter approach replaced with date-range-first approach.
-    Leap day filtering now happens before period trimming to prevent off-by-one errors.
 
     Args:
         aggregation: Temporal aggregation ('daily', 'weekly', 'dekad')
         year: Year to generate dates for
         crop_season_info: Dictionary with 'cutoff_date' and optional 'sos_date'
-        season_length: Fraction of season to use (0.25, 0.5, 0.75, 1.0). Default 1.0 (full season).
+        data_fraction: Fraction of season to use (0.25, 0.5, 0.75, 1.0). Default 1.0 (full season).
                       Keeps the first N% of the season from SOS onwards.
     """
     freq_map = {"daily": (DAILY_FREQ, 365), "weekly": (WEEKLY_FREQ, 52), "dekad": (DEKAD_FREQ, 36)}
@@ -422,18 +419,18 @@ def _get_aggregation_params(aggregation: str, year: int,
     # Trim to max allowed length from the END (most recent dates)
     target_dates = target_dates[-default_len:]
 
-    # Apply season_length truncation for in-season prediction
-    # Keep the FIRST season_length fraction of the season (from SOS onwards)
-    if season_length < 1.0:
-        n_keep = max(1, int(len(target_dates) * season_length))
+    # Apply data_fraction truncation for in-season prediction
+    # Keep the FIRST data_fraction fraction of the season (from SOS onwards)
+    if data_fraction < 1.0:
+        n_keep = max(1, int(len(target_dates) * data_fraction))
         target_dates = target_dates[:n_keep]
-        logging.debug(f"Season length {season_length}: keeping {n_keep}/{len(target_dates)} dates")
+        logging.debug(f"Data fraction {data_fraction}: keeping {n_keep}/{len(target_dates)} dates")
 
     # Warn if we got significantly fewer dates than expected
-    expected_len = int(default_len * season_length)
+    expected_len = int(default_len * data_fraction)
     if len(target_dates) < expected_len * 0.8:
         logging.warning(
-            f"[{aggregation}] Year {year}: expected ~{expected_len} periods (season_length={season_length}), "
+            f"[{aggregation}] Year {year}: expected ~{expected_len} periods (data_fraction={data_fraction}), "
             f"got {len(target_dates)}. Check crop_season_info bounds."
         )
 
@@ -560,7 +557,7 @@ def _extract_weather_features(dataset: CYDataset, adm_id: str, year: int,
             # Leave NaNs in place - normalization will impute to 0.0 (mean in z-score space)
             # This ensures correct z-score computation instead of using raw 0.0 values
         else:
-            # For weekly/dekad: interpolate to FULL daily resolution first, then aggregate
+            # For weekly/dekad: interpolate to full daily resolution first, then aggregate
             # This ensures true temporal averaging instead of point-sampling
             freq = WEEKLY_FREQ if aggregation == "weekly" else DEKAD_FREQ
             full_daily_range = pd.date_range(start=target_dates[0], end=target_dates[-1], freq='D')
@@ -663,7 +660,7 @@ def _extract_remote_sensing_features(dataset: CYDataset, adm_id: str, year: int,
 
     Args:
         dataset: CY-Bench dataset
-        adm_id: Administrative region ID
+        adm_id: Administrative region IDC
         year: Year to extract data for
         target_dates: DatetimeIndex for resampling
         aggregation: Temporal aggregation ('daily', 'weekly', 'dekad')
@@ -919,7 +916,7 @@ def _assemble_features(features: Dict, seq_len: int,
 def build_daily_input_sequence(
         dataset: CYDataset, adm_id: str, year: int,
         aggregation: str = "dekad",
-        season_length: float = 1.0,
+        data_fraction: float = 1.0,
         use_sota_features: bool = False,
         include_spatial_features: bool = False,
         lag_years: int = 0,
@@ -939,7 +936,7 @@ def build_daily_input_sequence(
         adm_id: Administrative region ID
         year: Year to extract data for
         aggregation: Temporal aggregation ('daily', 'weekly', 'dekad')
-        season_length: Fraction of season to use (0.25, 0.5, 0.75, 1.0). Default 1.0 (full season)
+        data_fraction: Fraction of season to use (0.25, 0.5, 0.75, 1.0). Default 1.0 (full season)
         use_sota_features: Include SOTA temporal features
         include_spatial_features: Include explicit lat/lon features
         lag_years: Number of lagged yield features (max 2)
@@ -976,7 +973,7 @@ def build_daily_input_sequence(
             (adm_id, year) in dataset._dfs_x["crop_season"].index):
         crop_season_info = dataset._dfs_x["crop_season"].loc[(adm_id, year)]
 
-    target_dates, seq_len, freq_str = _get_aggregation_params(aggregation, year, crop_season_info, season_length)
+    target_dates, seq_len, freq_str = _get_aggregation_params(aggregation, year, crop_season_info, data_fraction)
 
     features = {}
 
