@@ -5,6 +5,7 @@
 #
 #   ./generate_walk_forward_tasks.sh   # US/BR → one task per fold; others → all folds
 #   sbatch --array=0-<N> walk_forward_array.slurm
+#   FORECAST_TYPE=middle-of-season sbatch --array=0-<N> walk_forward_array.slurm
 #   SPLIT_FOLDS_COUNTRIES="" ./generate_walk_forward_tasks.sh   # disable per-fold split
 #
 #SBATCH --job-name=wf_array
@@ -51,13 +52,13 @@ FOLD_ARGS=()
 if [ -n "${WF_FOLD_EXTRA:-}" ] && [[ "$WF_FOLD_EXTRA" =~ ^[0-9]+$ ]]; then
     WF_FOLD_IDX="$WF_FOLD_EXTRA"
     export WF_FOLD_IDX
-    RUN_ID="${WF_MODEL}-${WF_CROP}-${WF_COUNTRY}-wf-f${WF_FOLD_IDX}"
+    RUN_ID="${WF_MODEL}-${WF_CROP}-${WF_COUNTRY}-${WF_FORECAST_SLUG}-wf-f${WF_FOLD_IDX}"
     FOLD_ARGS=(--wf_fold_idx "$WF_FOLD_IDX")
 else
-    RUN_ID="${WF_MODEL}-${WF_CROP}-${WF_COUNTRY}-wf"
+    RUN_ID="${WF_MODEL}-${WF_CROP}-${WF_COUNTRY}-${WF_FORECAST_SLUG}-wf"
 fi
 
-echo "Array task ${SLURM_ARRAY_TASK_ID:-0}: ${WF_CROP} ${WF_COUNTRY} ${WF_MODEL} ${WF_FOLD_IDX:-all-folds}"
+echo "Array task ${SLURM_ARRAY_TASK_ID:-0}: ${WF_CROP} ${WF_COUNTRY} ${WF_MODEL} ${WF_FOLD_IDX:-all-folds} forecast=${FORECAST_TYPE}"
 echo "Node: $(hostname)  Start: $(date)"
 
 if ! has_crop_country_data "$WF_CROP" "$WF_COUNTRY"; then
@@ -94,8 +95,9 @@ run_python "$script" \
     --save_checkpoint_dir "$CHECKPOINT_SAVE_DIR" \
     --results_dir "$RESULTS_DIR" \
     --wandb_project "$WANDB_PROJECT" \
-    --run_id "$RUN_ID"
+    --run_id "$RUN_ID" \
+    --forecast_type "$FORECAST_TYPE"
 
-echo "Done ${WF_CROP}-${WF_COUNTRY} ${WF_MODEL}: $(date)"
+echo "Done ${WF_CROP}-${WF_COUNTRY} ${WF_MODEL} (${FORECAST_TYPE}): $(date)"
 echo "CSVs: $RESULTS_DIR"
 echo "Checkpoints: $CHECKPOINT_SAVE_DIR"

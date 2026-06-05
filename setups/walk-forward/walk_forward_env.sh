@@ -11,9 +11,32 @@ REPO_ROOT="$(cd "$CYBENCH_PKG_ROOT/.." && pwd)"
 
 CONFIG_DIR="${CONFIG_DIR:-$SCRIPT_DIR/../configurations}"
 CYBENCH_DATA_DIR="${CYBENCH_DATA_DIR:-$CYBENCH_PKG_ROOT/data}"
-HYPERPARAMS_JSON="${HYPERPARAMS_JSON:-$CONFIG_DIR/eosHyperparameters.json}"
+# Forecast horizon: end-of-season (EOS) or middle-of-season (MOS).
+# Selects hyperparameter JSON and is passed to Python as --forecast_type.
+FORECAST_TYPE="${FORECAST_TYPE:-end-of-season}"
 # All walk-forward artifacts (CSVs, .ckpt) — absolute paths, safe with poetry run
 YIELD_HUB_OUTPUT_ROOT="${YIELD_HUB_OUTPUT_ROOT:-$YIELD_HUB_ROOT/output/walk-forward}"
+
+# Map FORECAST_TYPE → hyperparameter file (patchtst / xlinear HPO results).
+resolve_walk_forward_config() {
+    case "$FORECAST_TYPE" in
+        end-of-season)
+            HYPERPARAMS_JSON="${HYPERPARAMS_JSON:-$CONFIG_DIR/eosHyperparameters.json}"
+            WF_FORECAST_SLUG="eos"
+            ;;
+        middle-of-season)
+            HYPERPARAMS_JSON="${HYPERPARAMS_JSON:-$CONFIG_DIR/mosHyperparameters.json}"
+            WF_FORECAST_SLUG="mos"
+            ;;
+        *)
+            echo "ERROR: FORECAST_TYPE must be 'end-of-season' or 'middle-of-season' (got: $FORECAST_TYPE)"
+            exit 1
+            ;;
+    esac
+    export HYPERPARAMS_JSON WF_FORECAST_SLUG FORECAST_TYPE
+}
+
+resolve_walk_forward_config
 
 if [ -f "$YIELD_HUB_ROOT/.env" ]; then
     set -a
@@ -52,6 +75,7 @@ echo "Python: $(run_python -c 'import sys; print(sys.executable)')"
 echo "Version: $(run_python --version 2>&1)"
 echo "CY-Bench data dir: $CYBENCH_DATA_DIR"
 echo "Walk-forward output root: $YIELD_HUB_OUTPUT_ROOT"
+echo "Forecast type: $FORECAST_TYPE (HPS: $(basename "$HYPERPARAMS_JSON"))"
 
 if [ ! -d "$CYBENCH_DATA_DIR" ]; then
     echo "ERROR: CYBENCH_DATA_DIR does not exist: $CYBENCH_DATA_DIR"
@@ -107,7 +131,7 @@ has_crop_country_data() {
 # Layout: output/walk-forward/<run-label>/yield-<model>/<country>/<crop>/{checkpoints,results}/
 walk_forward_output_dirs() {
     local run_label=$1 model=$2 country=$3 crop=$4
-    local run_base="$YIELD_HUB_OUTPUT_ROOT/$run_label/yield-${model}/${country}/${crop}"
+    local run_base="$YIELD_HUB_OUTPUT_ROOT/$run_label/${WF_FORECAST_SLUG}/yield-${model}/${country}/${crop}"
     if [ -n "${WF_FOLD_IDX:-}" ]; then
         run_base="$run_base/fold_$(printf '%02d' "$WF_FOLD_IDX")"
     fi

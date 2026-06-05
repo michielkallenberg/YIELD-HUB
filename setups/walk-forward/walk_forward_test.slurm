@@ -17,6 +17,7 @@
 
 # sbatch copies the script to a spool dir; use the directory where you ran sbatch
 SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+export FORECAST_TYPE="${FORECAST_TYPE:-middle-of-season}"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/walk_forward_env.sh"
 
@@ -31,17 +32,17 @@ TEST_MODEL="${TEST_MODEL:-informer}"
 TEST_EPOCHS="${TEST_EPOCHS:-2}"
 TEST_YEARS="${TEST_YEARS:-2}"
 TEST_AGGREGATION="${TEST_AGGREGATION:-daily}"
-TEST_SEASON_LENGTH="${TEST_SEASON_LENGTH:-0.25}"
 WANDB_PROJECT="${WANDB_PROJECT:-test-cluster-wf}"
 WF_RUN_LABEL="${WF_RUN_LABEL:-smoke-test}"
-RUN_ID="${TEST_MODEL}-${TEST_CROP}-${TEST_COUNTRY}-smoke"
+RUN_ID="${TEST_MODEL}-${TEST_CROP}-${TEST_COUNTRY}-${WF_FORECAST_SLUG}-smoke"
 
 walk_forward_output_dirs "$WF_RUN_LABEL" "$TEST_MODEL" "$TEST_COUNTRY" "$TEST_CROP"
 
 echo ""
 echo "========== SMOKE TEST =========="
 echo "  ${TEST_CROP}-${TEST_COUNTRY}  model=${TEST_MODEL}  epochs=${TEST_EPOCHS}"
-echo "  test_years=${TEST_YEARS}  aggregation=${TEST_AGGREGATION}  season_length=${TEST_SEASON_LENGTH}"
+echo "  test_years=${TEST_YEARS}  aggregation=${TEST_AGGREGATION}  forecast_type=${FORECAST_TYPE}"
+echo "  hyperparameters: $(basename "$HYPERPARAMS_JSON")"
 echo "  checkpoints: ${CHECKPOINT_SAVE_DIR}"
 echo "  results (CSV): ${RESULTS_DIR}"
 echo "  wandb: ${WANDB_PROJECT}"
@@ -71,7 +72,7 @@ esac
 
 hps_args=()
 if get_hyperparameters "$TEST_MODEL" "$TEST_CROP" "$TEST_COUNTRY" hps_args; then
-    echo "Using HPS from eosHyperparameters.json"
+    echo "Using HPS from $(basename "$HYPERPARAMS_JSON")"
 else
     echo "No HPS override for ${TEST_MODEL}/${TEST_COUNTRY}/${TEST_CROP}; using script defaults"
     hps_args=()
@@ -88,7 +89,7 @@ run_python "$script" \
     --country "$TEST_COUNTRY" \
     --model_type "$TEST_MODEL" \
     --aggregation "$TEST_AGGREGATION" \
-    --season_length "$TEST_SEASON_LENGTH" \
+    --forecast_type "$FORECAST_TYPE" \
     --epochs "$TEST_EPOCHS" \
     --test_years "$TEST_YEARS" \
     --lag_years 0 \

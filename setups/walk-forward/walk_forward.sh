@@ -6,6 +6,8 @@
 # Or one sbatch per task: ./walk_forward_submit.sh
 #
 # Smoke test: sbatch walk_forward_test.slurm
+# MOS sweep:  FORECAST_TYPE=middle-of-season sbatch walk_forward.sh
+# EOS sweep:  FORECAST_TYPE=end-of-season sbatch walk_forward.sh  (default)
 #
 # This script: one sbatch → bash loops countries; up to MAX_PARALLEL Python runs
 # in the background on the same GPU node. Walk-forward folds are still serial inside Python.
@@ -40,9 +42,11 @@ if [ ! -f "$YEARS_JSON" ]; then
     exit 1
 fi
 if [ ! -f "$HYPERPARAMS_JSON" ]; then
-    echo "ERROR: eosHyperparameters.json not found at $HYPERPARAMS_JSON"
+    echo "ERROR: Hyperparameters file not found at $HYPERPARAMS_JSON (FORECAST_TYPE=$FORECAST_TYPE)"
     exit 1
 fi
+
+EPOCHS="${EPOCHS:-100}"
 
 declare -A MAIZE_COUNTRIES
 declare -A WHEAT_COUNTRIES
@@ -69,7 +73,10 @@ echo "  EXCLUDED_COUNTRIES: ${EXCLUDED_COUNTRIES:-<none>}"
 echo "  WANDB_PROJECT: $WANDB_PROJECT"
 echo "  MAX_PARALLEL: $MAX_PARALLEL"
 echo "  FORCE_RERUN: $FORCE_RERUN"
-echo "  Output root: $YIELD_HUB_OUTPUT_ROOT (run label: $WF_RUN_LABEL)"
+echo "  FORECAST_TYPE: $FORECAST_TYPE"
+echo "  HYPERPARAMS_JSON: $HYPERPARAMS_JSON"
+echo "  EPOCHS: $EPOCHS"
+echo "  Output root: $YIELD_HUB_OUTPUT_ROOT (run label: $WF_RUN_LABEL, slug: $WF_FORECAST_SLUG)"
 echo "  Maize countries: $(echo ${!MAIZE_COUNTRIES[@]} | tr ' ' '\n' | sort | tr '\n' ' ')"
 echo "  Wheat countries: $(echo ${!WHEAT_COUNTRIES[@]} | tr ' ' '\n' | sort | tr '\n' ' ')"
 
@@ -117,7 +124,7 @@ for crop in "${crops[@]}"; do
                 continue
             fi
 
-            RUN_ID="${model}-${crop}-${country}-wf"
+            RUN_ID="${model}-${crop}-${country}-${WF_FORECAST_SLUG}-wf"
             walk_forward_output_dirs "$WF_RUN_LABEL" "$model" "$country" "$crop"
 
             if already_trained "$CHECKPOINT_SAVE_DIR"; then
@@ -145,7 +152,7 @@ for crop in "${crops[@]}"; do
                 --country "$country"
                 --model_type "$model"
                 --aggregation daily
-                --epochs 2
+                --epochs "$EPOCHS"
                 --drop_tavg
                 --test_years 5
                 "${model_flags[@]}"
@@ -154,7 +161,7 @@ for crop in "${crops[@]}"; do
                 --results_dir "$RESULTS_DIR"
                 --wandb_project "$WANDB_PROJECT"
                 --run_id "$RUN_ID"
-                --forecast_type "end-of-season"
+                --forecast_type "$FORECAST_TYPE"
             )
 
             log_file="log/final_${RUN_ID}.txt"

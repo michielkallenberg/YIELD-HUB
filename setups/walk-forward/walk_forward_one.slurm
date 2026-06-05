@@ -30,7 +30,7 @@ WF_RUN_LABEL="${WF_RUN_LABEL:-final}"
 WANDB_PROJECT="${WANDB_PROJECT:-AAAI2027-CYP-WF}"
 EPOCHS="${EPOCHS:-100}"
 TEST_YEARS="${TEST_YEARS:-5}"
-RUN_ID="${RUN_ID:-${WF_MODEL}-${WF_CROP}-${WF_COUNTRY}-wf}"
+RUN_ID="${RUN_ID:-${WF_MODEL}-${WF_CROP}-${WF_COUNTRY}-${WF_FORECAST_SLUG}-wf}"
 
 mkdir -p log
 
@@ -43,7 +43,7 @@ walk_forward_output_dirs "$WF_RUN_LABEL" "$WF_MODEL" "$WF_COUNTRY" "$WF_CROP"
 
 hps_args=()
 if ! get_hyperparameters "$WF_MODEL" "$WF_CROP" "$WF_COUNTRY" hps_args; then
-    echo "ERROR: No HPS in eosHyperparameters.json for ${WF_MODEL} ${WF_COUNTRY} ${WF_CROP}"
+    echo "ERROR: No HPS in $(basename "$HYPERPARAMS_JSON") for ${WF_MODEL} ${WF_COUNTRY} ${WF_CROP}"
     exit 1
 fi
 
@@ -55,7 +55,7 @@ else
     read -ra model_flags <<< "$(get_model_flags "$WF_MODEL" "$WF_CROP")"
 fi
 
-echo "Job: ${WF_CROP}-${WF_COUNTRY} ${WF_MODEL}"
+echo "Job: ${WF_CROP}-${WF_COUNTRY} ${WF_MODEL} forecast=${FORECAST_TYPE}"
 echo "Checkpoints: $CHECKPOINT_SAVE_DIR"
 echo "Results: $RESULTS_DIR"
 
@@ -72,6 +72,7 @@ run_python "$script" \
     --save_checkpoint_dir "$CHECKPOINT_SAVE_DIR" \
     --results_dir "$RESULTS_DIR" \
     --wandb_project "$WANDB_PROJECT" \
-    --run_id "$RUN_ID"
+    --run_id "$RUN_ID" \
+    --forecast_type "$FORECAST_TYPE"
 
 echo "Done: $(date)"
