@@ -109,15 +109,6 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         """
         return seq_len - max(lags_sequence)
 
-    @abstractmethod
-    def _build_model(self) -> nn.Module:
-        raise NotImplementedError
-
-    @abstractmethod
-    def forward(self, x_ts: torch.Tensor, x_static: torch.Tensor,
-                observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        raise NotImplementedError
-
     def _get_static_feature_names(self) -> List[str]:
         return _get_static_feature_names(
             self.config.include_spatial_features,
@@ -227,6 +218,10 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             logging.info(f"[{self.config.model_type}] Skipping mask verification (model not ready).")
             return
 
+        if self.feature_norm_params is None:
+            logging.info(f"[{self.config.model_type}] Skipping mask verification (norm params not available).")
+            return
+
         # Using effective_seq_len if available (for linear models)
         seq_len = self._effective_seq_len if hasattr(self, '_effective_seq_len') else self.config.seq_len
         dummy_ts = torch.randn(2, seq_len, self.n_ts_features, device=self.device)
@@ -235,9 +230,16 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         half_mask = full_mask.clone()
         half_mask[:, seq_len // 2:] = False
 
+        # Normalize dummy data to match training distribution
+        # Models expect normalized input as in _shared_step
+        dummy_ts_n = self._normalize_time_series(dummy_ts, observed_mask=full_mask)
+        dummy_static_n = self._normalize_and_impute_static(dummy_static)
+
         with torch.no_grad():
-            out_full = self.forward(dummy_ts, dummy_static, observed_mask=full_mask)
-            out_half = self.forward(dummy_ts, dummy_static, observed_mask=half_mask)
+            out_full = self.forward(dummy_ts_n, dummy_static_n, observed_mask=full_mask)
+            # Also normalize the half-masked data for consistency
+            dummy_ts_half_n = self._normalize_time_series(dummy_ts, observed_mask=half_mask)
+            out_half = self.forward(dummy_ts_half_n, dummy_static_n, observed_mask=half_mask)
 
         if torch.allclose(out_full, out_half, atol=1e-4):
             logging.warning(
@@ -268,8 +270,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         trends_z = (trend_predictions_orig - dm.y_mean) / dm.y_std
         return torch.tensor(trends_z, dtype=torch.float32, device=self.device).unsqueeze(1)
 
-    def _compute_weighted_loss(self, pred: torch.Tensor, y: torch.Tensor,
-                               validity_mask: torch.Tensor) -> torch.Tensor:
+    def _compute_weighted_loss(self, pred: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
         Compute MSE loss between predictions and targets.
         """
@@ -293,7 +294,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             final_pred = pred + batch_trends.squeeze(-1).detach()
         else:
             final_pred = pred
-        loss = self._compute_weighted_loss(final_pred, y, validity_mask)
+        loss = self._compute_weighted_loss(final_pred, y)
 
         metrics.update(final_pred.detach(), y.detach())
         self.log(loss_key, loss, prog_bar=True)
@@ -414,7 +415,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
 
         final_pred_z = pred + batch_trends.squeeze(-1).detach() if batch_trends is not None else pred
 
-        loss = self._compute_weighted_loss(final_pred_z, y_z, validity_mask)
+        loss = self._compute_weighted_loss(final_pred_z, y_z)
 
         device = final_pred_z.device
         y_std = dm.y_std.to(device) if hasattr(dm.y_std, 'to') else float(dm.y_std)
@@ -715,10 +716,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                     'total_params': total_params
                 })
 
-# =========================================================
-# LINEAR BASELINE ARCHITECTURES
-# =========================================================
 
+# Linear Baseline architectures
 class NLinearYieldModel(BaseTimeSeriesModel):
     """
     NLinear baseline: single linear layer per channel with last-value subtraction.
@@ -1073,6 +1072,9 @@ class RLinearYieldModel(BaseTimeSeriesModel):
             T = self._effective_seq_len
 
         # RevIN normalize
+        # x_ts is already in z-score space (normalized by _normalize_time_series). Applying RevIN here is double normalization: global z-score + per-instance RevIN.
+        # This is intentional for handling per-instance distribution shifts on top of global normalization, but differs from the original RevIN paper which assumes
+        # RevIN is applied to raw data.
         x_revin, instance_mean, instance_std = self.revin(x_ts, observed_mask)
 
         # Apply shared linear across sequence dimension per channel
@@ -1113,15 +1115,11 @@ class XLinearYieldModel(BaseTimeSeriesModel):
     """
     XLinear adapted for crop yield regression with static features.
 
-    From "XLinear: A Lightweight and Accurate MLP-Based Model for
-    Long-Term Time Series Forecasting with Exogenous Inputs"
-    (Chen et al., AAAI 2026)
+    A Lightweight and Accurate MLP-Based Model for Long-Term Time Series Forecasting with Exogenous Inputs (Chen et al., AAAI 2026)
 
     Optional RevIN normalization:
-    When config.use_revin=True, applies Reversible Instance Normalization
-    to the endogenous series before embedding. This provides per-instance
-    normalization (vs. global z-scoring), which can help with distribution
-    shift across locations and years.
+    When config.use_revin=True, applies Reversible Instance Normalization to the endogenous series before embedding. This provides per-instance
+    normalization (vs. global z-scoring), which can help with distribution shift across locations and years.
     """
 
     def _build_model(self) -> nn.Module:
@@ -1237,16 +1235,16 @@ class XLinearYieldModel(BaseTimeSeriesModel):
                 if observed_mask is not None:
                     endo = endo * observed_mask.unsqueeze(-1).float()
 
-                # Apply RevIN normalization if enabled
-                if self.config.use_revin:
-                    endo, _, _ = self.revin(endo, observed_mask)
-
+                # Don't apply RevIN on lag yield endogenous series. Lag yields are already in z-score space (normalized static features) and are constant 
+                # across time, which makes RevIN normalization problematic (std ≈ 0 for constant series).
+                # The fallback path (mean of exogenous channels) can use RevIN since it has temporal variation.
                 return endo
 
         # Fallback: mean of all exogenous channels
         endo = x_ts.mean(dim=-1, keepdim=True)
 
-        # Apply RevIN normalization if enabled
+        # Apply RevIN normalization if enabled (only for fallback case)
+        # This applies RevIN on already-normalized data, which is double normalization. This is intentional for handling per-instance distribution shifts on top of global normalization.
         if self.config.use_revin:
             endo, _, _ = self.revin(endo, observed_mask)
 
@@ -1520,6 +1518,11 @@ class OLinearYieldModel(BaseTimeSeriesModel):
                 logging.info("[OLinear] Channel correlation matrix initialized")
 
         # RevIN normalize
+        # x_ts is already in z-score space (normalized by _normalize_time_series).
+        # Applying RevIN here is double normalization: global z-score + per-instance RevIN.
+        # This is intentional for handling per-instance distribution shifts on top
+        # of global normalization, but differs from the original RevIN paper which assumes
+        # RevIN is applied to raw data.
         x_norm, instance_mean, instance_std = self.revin(x_ts, observed_mask)
 
         # Token embedding with dimension expansion
