@@ -26,6 +26,9 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from loadData import prepare_features_and_targets
 from eb_criterion import EBCriterionCallbackV2
 
+# Import forecast horizon verification
+from cybench.process.alignment_patch import verify_forecast_horizon_config, test_alignment_patch
+
 def evaluate_predictions_by_year(y_true, y_pred, years, metrics=None, min_samples_per_year=2, epsilon=1e-6):
     """
     Compute overall performance and per year with robustness to small sample sizes and zero/near-zero variance.
@@ -451,6 +454,10 @@ def run_walk_forward_validation(
     print(f"WALK-FORWARD VALIDATION (Test on All Future Years)")
     print(f"{'=' * 70}\n")
 
+    # Verify alignment patch is working before starting validation
+    print("\n[Pre-flight check] Verifying alignment patch...")
+    test_alignment_patch()
+
     # Generate walk-forward splits
     wf_splits = generate_walk_forward_splits(all_years, test_years)
     if fold_idx_only is not None:
@@ -483,6 +490,9 @@ def run_walk_forward_validation(
         fold_config = _update_config_for_fold(
             config, split['train_years'], max_epochs
         )
+
+        # Verify forecast horizon configuration for this fold
+        verify_forecast_horizon_config(fold_config, fold_idx=split['fold_idx'])
 
         # Create datamodule and model
         dm_fold = datamodule_class(fold_config)
@@ -620,13 +630,18 @@ def run_walk_forward_validation(
 
 
 def _update_config_for_fold(config, train_years, max_epochs):
-    """Update config for a walk-forward fold."""
+    """Update config for a walk-forward fold.
+
+    Creates a new config object for each fold, preserving important settings
+    like data_fraction and model-specific hyperparameters.
+    """
     # Create a copy of the config with updated test_years and max_epochs
     fold_config = config.__class__(
         crop=config.crop,
         country=config.country,
         model_type=getattr(config, 'model_type', None),
         aggregation=getattr(config, 'aggregation', None),
+        data_fraction=config.data_fraction,  # Controls amount of input data fed to the model
         use_sota_features=getattr(config, 'use_sota_features', False),
         include_spatial_features=getattr(config, 'include_spatial_features', False),
         lag_years=getattr(config, 'lag_years', 1),
@@ -637,7 +652,7 @@ def _update_config_for_fold(config, train_years, max_epochs):
         max_epochs=max_epochs,
         lr=config.lr,
         weight_decay=config.weight_decay,
-        test_years=1,
+        test_years=1,  # Note: walk-forward passes explicit year lists, so this field is not actually used
         use_residual_trend=getattr(config, 'use_residual_trend', False),
         use_recursive_lags=getattr(config, 'use_recursive_lags', False),
         use_gdd=getattr(config, 'use_gdd', False),

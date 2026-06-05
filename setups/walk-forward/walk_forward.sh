@@ -145,7 +145,7 @@ for crop in "${crops[@]}"; do
                 --country "$country"
                 --model_type "$model"
                 --aggregation daily
-                --epochs 100
+                --epochs 2
                 --drop_tavg
                 --test_years 5
                 "${model_flags[@]}"
@@ -154,6 +154,7 @@ for crop in "${crops[@]}"; do
                 --results_dir "$RESULTS_DIR"
                 --wandb_project "$WANDB_PROJECT"
                 --run_id "$RUN_ID"
+                --forecast_type "end-of-season"
             )
 
             log_file="log/final_${RUN_ID}.txt"

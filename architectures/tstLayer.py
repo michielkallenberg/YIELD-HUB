@@ -30,7 +30,6 @@ TimeSeriesMixerModel = None
 TimeSeriesMixerForPrediction = None
 TimeSeriesMixerConfig = None
 try:
-    # Try PatchTSMixer first (newer name)
     from transformers.models.patchtsmixer.modeling_patchtsmixer import (
         PatchTSMixerModel as TimeSeriesMixerModel,
         PatchTSMixerForPrediction as TimeSeriesMixerForPrediction,
@@ -38,7 +37,6 @@ try:
     )
 except ImportError:
     try:
-        # Try time_series_transformer module (older location)
         from transformers.models.time_series_transformer import (
             TimeSeriesMixerModel,
             TimeSeriesMixerForPrediction,
@@ -46,7 +44,6 @@ except ImportError:
         )
     except ImportError:
         try:
-            # Try direct import from transformers
             from transformers import (
                 PatchTSMixerModel as TimeSeriesMixerModel,
                 PatchTSMixerForPrediction as TimeSeriesMixerForPrediction,
@@ -54,14 +51,13 @@ except ImportError:
             )
         except ImportError:
             try:
-                # Try TimeSeriesMixer name directly
                 from transformers import (
                     TimeSeriesMixerModel,
                     TimeSeriesMixerForPrediction,
                     TimeSeriesMixerConfig,
                 )
             except ImportError:
-                pass  # Will handle gracefully in model factory
+                pass 
 
 if TimeSeriesMixerForPrediction is None:
     logging.warning("TSMixer/PatchTSMixer not available in this transformers version. "
@@ -108,10 +104,9 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         self.weight_decay = weight_decay
         self.config = config
         self.trend_model = TrendModel()
-        # NOTE: loc_trend_params removed - TrendModel handles trend prediction internally
         self.feature_norm_params: Optional[Dict] = None
 
-        # Use config.time_series_vars property instead of global WEATHER_FEATURES
+        # Uses config.time_series_vars property instead of global WEATHER_FEATURES
         # This ensures feature count matches the actual features being extracted
         use_sota = config.use_sota_features
         n_domain_ts = sum([config.use_gdd, config.use_rue, config.use_farquhar])
@@ -131,8 +126,6 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
 
         # Compute n_crop_calendar dynamically from CROP_CALENDAR_DATES
         # using the same cyclic-encoding logic as _compute_expected_static_features().
-        # Previously hardcoded to 6, but actual CROP_CALENDAR_DATES may have fewer items.
-        # This ensures n_static_features always matches what the DataModule validates.
         n_crop_calendar = 0
         for date_name in CROP_CALENDAR_DATES:
             if date_name in ["sos_date", "eos_date"]:
@@ -152,15 +145,9 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         # Flag for tracking model build completion (used by _verify_mask_is_used)
         self._model_ready = False
 
-        # _build_model() is the correct abstract method name.
-        # The previous name _extract_static_features_build_model was a copy-paste
-        # error that silently broke ABC enforcement — subclasses implementing
-        # _build_model() were never actually required to by the base class.
         self.base_model = self._build_model()
 
-        # NOTE: self.criterion (nn.MSELoss) is intentionally absent.
-        # Training steps use _compute_weighted_loss() which calls
-        # F.mse_loss(reduction='none') to get per-sample losses before weighting.
+        # self.criterion (nn.MSELoss) is intentionally absent. Training steps use _compute_weighted_loss() which calls F.mse_loss(reduction='none') to get per-sample losses before weighting.
         # Exclude NRMSE from training metrics since targets are in z-score space (mean≈0 causes division issues)
         self.train_metrics = ModelMetrics(prefix="train", include_nrmse=False)
         self.val_metrics = ModelMetrics(prefix="val")
@@ -182,8 +169,6 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             Context length that satisfies: context_length + max(lags) <= seq_len
         """
         return seq_len - max(lags_sequence)
-
-    # -- Abstract interface --------------------------------------------------
 
     @abstractmethod
     def _build_model(self) -> nn.Module:
@@ -211,17 +196,10 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         """
         raise NotImplementedError
 
-    # -- Static feature name helper -----------------------------------------
 
     def _get_static_feature_names(self) -> List[str]:
         """
         Thin wrapper so _normalize_and_impute_static() can look up norm params.
-
-        Previously this method only existed on DailyCYBenchSeqDataModule.
-        _normalize_and_impute_static() called self._get_static_feature_names(),
-        raising AttributeError on the very first training batch. Adding it here
-        (delegating to the shared module-level function) fixes the crash without
-        duplicating the logic.
         """
         return _get_static_feature_names(
             self.config.include_spatial_features,
@@ -233,21 +211,14 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         """
         Initialize temporal attention module with known d_model.
 
-        This method is called during _build_model() by models that support
-        attention-based pooling (e.g., TimeXer, iTransformer). The current
-        implementation uses a simpler pooling strategy, so this is a no-op
-        stub for compatibility with the reference implementation.
+        Called during _build_model() by models that support attention-based pooling (e.g., TimeXer, iTransformer). The current
+        implementation uses a simpler pooling strategy-
 
         Args:
             d_model: The hidden state dimension (e.g., 64 for most models)
         """
-        # Stub for compatibility with reference implementation.
-        # TimeXer and iTransformer models use custom pooling strategies
-        # (channel projection, patch-based pooling) and don't need
-        # temporal attention pooling.
+        # TimeXer and iTransformer models are using custom pooling strategie (channel projection, patch-based pooling) and don't need temporal attention pooling.
         pass
-
-    # -- Hidden state extraction and pooling helpers -------------------------
 
     def _extract_hidden_state(self, outputs) -> torch.Tensor:
         """
@@ -320,19 +291,14 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                 f"(expected 2D, 3D, or 4D tensor, got {h.dim()}D)"
             )
 
-    # -- Normalisation -------------------------------------------------------
-
     def _normalize_time_series(self, x_ts: torch.Tensor,
                                 observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Z-score normalise each time series feature using training statistics.
-        Raises RuntimeError / KeyError early if params are missing — intentional,
+        Z-score normalise each time series feature using training statistics. Raises RuntimeError / KeyError early if params are missing — intentional,
         to catch silent data pipeline failures before they corrupt training.
 
-        Re-zero padded positions after normalization to prevent spurious signal
-        from padded zeros being normalized to (0 - mean)/std which is non-zero.
+        Re-zero padded positions after normalization to prevent spurious signal from padded zeros being normalized to (0 - mean)/std which is non-zero.
         """
-        # During sanity check, on_train_start() hasn't been called yet
         # Try to get feature_norm_params from datamodule
         if self.feature_norm_params is None:
             if hasattr(self, 'trainer') and self.trainer is not None:
@@ -377,7 +343,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             # Handle both NaN AND inf (can be produced by division)
             x[:, :, i] = torch.nan_to_num(x[:, :, i], nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Re-zero padded positions AFTER normalization
+        # Re-zero padded positions after normalization
         # Without this, padded zeros become (0 - mean)/std which is non-zero
         # and participates in attention computation as spurious signal
         if observed_mask is not None:
@@ -386,6 +352,50 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             x = x * mask_expanded  # Zero out padded positions
 
         return x
+
+    def _apply_revin_normalization(self, x_ts: torch.Tensor,
+                                   observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Apply Reversible Instance Normalization (RevIN) to time series data.
+
+        RevIN computes per-instance, per-channel statistics:
+        - mean = sum(x * mask) / sum(mask)
+        - std = sqrt(sum((x - mean)^2 * mask) / sum(mask) + eps)
+
+        Args:
+            x_ts: Time series tensor of shape (batch, seq_len, n_features)
+            observed_mask: Boolean mask of shape (batch, seq_len) indicating valid timesteps
+
+        Returns:
+            Normalized tensor of same shape as x_ts
+        """
+        B, T, C = x_ts.shape
+        eps = 1e-8
+
+        if observed_mask is not None:
+            mask_f = observed_mask.float().unsqueeze(-1)  # (B, T, 1)
+            valid_counts = mask_f.sum(dim=1, keepdim=True).clamp(min=1)  # (B, 1, 1)
+
+            # Compute instance mean per channel, considering only valid positions
+            instance_mean = (x_ts * mask_f).sum(dim=1, keepdim=True) / valid_counts  # (B, 1, C)
+
+            # Compute instance std per channel
+            sq_dev = ((x_ts - instance_mean) ** 2 * mask_f).sum(dim=1, keepdim=True)
+            instance_std = torch.sqrt(sq_dev / valid_counts + eps)  # (B, 1, C)
+        else:
+            # No mask: use all positions
+            instance_mean = x_ts.mean(dim=1, keepdim=True)  # (B, 1, C)
+            instance_std = x_ts.std(dim=1, keepdim=True) + eps  # (B, 1, C)
+
+        # Normalize
+        x_norm = (x_ts - instance_mean) / instance_std
+
+        # Re-zero masked positions after normalization
+        if observed_mask is not None:
+            mask_f = observed_mask.float().unsqueeze(-1)  # (B, T, 1)
+            x_norm = x_norm * mask_f
+
+        return x_norm
 
     def _normalize_and_impute_static(self, x_static: torch.Tensor) -> torch.Tensor:
         """
@@ -416,23 +426,18 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                 x[:, i] = torch.zeros_like(x_static[:, i])
             else:
                 x[:, i] = (x_static[:, i] - p['mean']) / p['std']
-            # Handle BOTH NaN AND inf (from division by near-zero std)
+            # Handle both NaN and inf (from division by near-zero std)
             x[:, i] = torch.nan_to_num(x[:, i], nan=0.0, posinf=0.0, neginf=0.0)
         return x
-
-    # -- Trend model ---------------------------------------------------------
 
     def on_train_start(self):
         """
         Fit per-location OLS trend lines and cache (slope, intercept).
 
-        Trend decomposition: yield = trend(location, year) + residual
-        The model learns residuals; trend is added back at inference.
-        Also copies feature_norm_params from the DataModule and builds
-        spatial index for nearest-neighbor trend estimation.
+        Trend decomposition: yield = trend(location, year) + residual. The model learns residuals and trend is added back at inference.
+        Also copies feature_norm_params from the DataModule and builds spatial index for nearest-neighbor trend estimation.
 
-        Added mask verification to ensure HuggingFace models correctly
-        use past_observed_mask to zero out padded positions in attention.
+        Added mask verification to ensure HuggingFace models correctly use past_observed_mask to zero out padded positions in attention.
         """
         dm = self.trainer.datamodule
         train_y_orig = dm.train_ds.y.numpy() * dm.y_std + dm.y_mean
@@ -449,9 +454,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         train_df = self.trend_model._train_df
         logging.info(f"Fitting trends for {len(train_df[KEY_LOC].unique())} locations")
 
-        # NOTE: TrendModel is now used for trend prediction in _compute_batch_trends()
-        # The sophisticated logic (Mann-Kendall testing, optimal window selection, spatial interpolation)
-        # is in TrendModel._predict_trend(), which we delegate to at inference time.
+        # TrendModel is now used for trend prediction in _compute_batch_trends()
+        # The Mann-Kendall logic is in TrendModel._predict_trend(), which is delegated to at inference time.
         # This means we don't need loc_trend_params, loc_coords, or _find_nearest_neighbor_trend anymore.
 
         # Verify that the model's forward pass accepts and uses past_observed_mask
@@ -466,10 +470,21 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             logging.info(f"[{self.config.model_type}] Skipping mask verification (model not ready).")
             return
 
+        # Skip if feature_norm_params not available yet
+        if self.feature_norm_params is None:
+            logging.info(f"[{self.config.model_type}] Skipping mask verification (no norm params yet).")
+            return
+
         # Use actual_context_length if available (for transformer models)
         seq_len = self._actual_context_length if hasattr(self, '_actual_context_length') else self.config.seq_len
+
+        # Create normalized dummy data to match what forward() expects during training
+        # After normalization, data is in z-score space (mean=0, std=1)
         dummy_ts = torch.randn(2, seq_len, self.n_ts_features, device=self.device)
+        dummy_ts = self._normalize_time_series(dummy_ts)  # Normalize like real training data
         dummy_static = torch.zeros(2, self.n_static_features, device=self.device)
+        dummy_static = self._normalize_and_impute_static(dummy_static)
+
         full_mask = torch.ones(2, seq_len, dtype=torch.bool, device=self.device)
         half_mask = full_mask.clone()
         half_mask[:, seq_len // 2:] = False
@@ -530,25 +545,18 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         trends_z = (trend_predictions_orig - dm.y_mean) / dm.y_std
         return torch.tensor(trends_z, dtype=torch.float32, device=self.device).unsqueeze(1)
 
-    # -- Loss ----------------------------------------------------------------
-
-    def _compute_weighted_loss(self, pred: torch.Tensor, y: torch.Tensor,
-                               validity_mask: torch.Tensor) -> torch.Tensor:
+    def _compute_weighted_loss(self, pred: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
         Compute MSE loss between predictions and targets.
 
-        The validity_mask indicates which timesteps in the input sequence
-        are real vs padded. However, since the model outputs a SCALAR prediction
-        per sample (yield), weighting by the fraction of valid timesteps would
-        arbitrarily down-weight short-season samples. A 191-day season is not
-        inherently less trustworthy than a 365-day season.
-
-        Using plain MSE is scientifically more defensible. The mask is retained
-        for attention masking (in forward()) but not used for loss weighting.
+        validity_mask is not used for loss weighting since the model
+        outputs a SCALAR prediction per sample (yield). Weighting by the
+        fraction of valid timesteps would arbitrarily down-weight short-season
+        samples. A 191-day season is not inherently less trustworthy than
+        a 365-day season. The mask is retained for attention masking in
+        forward() but not used for loss computation.
         """
         return F.mse_loss(pred, y)
-
-    # -- Lightning steps -----------------------------------------------------
 
     def _shared_step(self, batch, metrics: ModelMetrics, loss_key: str):
         x_ts, x_static, y, years, adm_ids, lats, lons, validity_mask = batch
@@ -574,7 +582,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             final_pred = pred + batch_trends.squeeze(-1).detach()
         else:
             final_pred = pred
-        loss = self._compute_weighted_loss(final_pred, y, validity_mask)
+        loss = self._compute_weighted_loss(final_pred, y)
 
         metrics.update(final_pred.detach(), y.detach())
         self.log(loss_key, loss, prog_bar=True)
@@ -627,7 +635,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         final_pred_z = pred + batch_trends.squeeze(-1) if batch_trends is not None else pred
 
         # Compute loss in z-score space (for consistency with training)
-        loss = self._compute_weighted_loss(final_pred_z, y_z, validity_mask)
+        loss = self._compute_weighted_loss(final_pred_z, y_z)
 
         # Denormalize to original scale for metrics computation
         # Ensure y_std and y_mean are on the same device as the predictions
@@ -815,10 +823,6 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         """
         Generate predictions for a batch of data without updating metrics.
 
-        This method can be called on-demand after training to get predictions
-        for new data. Unlike test_step, this does not update any metrics or
-        log any results - it simply returns denormalized predictions.
-
         Args:
             batch: Input batch tuple (x_ts, x_static, y_z, years, adm_ids, lats, lons, validity_mask)
 
@@ -897,9 +901,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                                        adm_ids: List[str]) -> torch.Tensor:
         """
         Replace lag features with cached predictions for recursive lag evaluation.
-
-        For test samples where lag years fall within the test set, this replaces
-        the observed lag values (which cause leakage) with previously predicted values.
+        For test samples where lag years fall within the test set, this replaces the observed lag values (which cause leakage) with previously predicted values.
 
         Args:
             x_static: Static features tensor (batch, n_static_features)
@@ -957,8 +959,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         """
         Cache predictions in ORIGINAL scale for recursive lag replacement.
 
-        x_static holds raw (un-normalized) lag yields. _normalize_and_impute_static
-        will z-score them later. Storing in original scale ensures only one
+        x_static holds raw (un-normalized) lag yields. _normalize_and_impute_static will z-score them later. Storing in original scale ensures only one
         normalization pass occurs.
 
         Args:
@@ -1106,17 +1107,15 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
         else:
-            # Use HFAutoformerModel, NOT AutoformerForPrediction
-            # AutoformerForPrediction wraps outputs in distribution interface and detaches gradients
-            # HFAutoformerModel returns raw encoder/decoder outputs with gradients preserved
+            # Use HFAutoformerModel instead of AutoformerForPrediction as HFAutoformerModel returns raw encoder/decoder outputs with gradients preserved
 
             # Standardize context length calculation for fair comparison
-            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            # Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
             lags_sequence = [1] if self.config.lag_years > 0 else [0]
             context_length = self._get_standardized_context_length(self.config.seq_len, lags_sequence)
 
             # Following baseline approach: process temporal features first,
-            # then concatenate with static features AFTER getting pooled representation
+            # then concatenate with static features after getting pooled representation
             cfg = AutoformerConfig(
                 prediction_length=1,
                 context_length=context_length,
@@ -1124,14 +1123,13 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
                 input_size=self.n_ts_features,  # Only temporal features
                 num_time_features=0,  # Standardized: all models use 0
                 num_static_categorical_features=0,
-                # NOT using num_static_real_features - we'll concatenate later
+                # not using num_static_real_features - will be concatenated later
                 d_model=64, num_attention_heads=4, ffn_dim=256, num_layers=3,
                 dropout=0.1,
             )
 
             model = HFAutoformerModel(cfg)
 
-            # READ BACK what HF actually stored (it may override our values)
             self._actual_lags = list(model.config.lags_sequence)
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
@@ -1191,8 +1189,8 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
         outputs = self.base_model(
             past_values=x_ts,
             past_time_features=torch.zeros(batch_size, seq_len, 0, device=x_ts.device),
-            past_observed_mask=observed_mask.unsqueeze(-1).expand(-1, -1, x_ts.shape[2]).float() if observed_mask is not None else None,
-            future_values=torch.zeros(batch_size, 1, x_ts.shape[-1], device=x_ts.device),
+            past_observed_mask=observed_mask.unsqueeze(-1).expand(-1, -1, self.n_ts_features).float() if observed_mask is not None else None,
+            future_values=torch.zeros(batch_size, 1, self.n_ts_features, device=x_ts.device),
             future_time_features=torch.zeros(batch_size, 1, 0, device=x_ts.device),
             return_dict=True,
             output_hidden_states=True,  # Request all hidden states
@@ -1227,7 +1225,7 @@ class PatchTSTModel(BaseTimeSeriesModel):
             stride = {"daily": 8, "weekly": 2, "dekad": 3}[self.config.aggregation]
 
             # Standardize context length calculation for fair comparison
-            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            # Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
             requested_lags = [1] if self.config.lag_years > 0 else [0]
             context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
@@ -1259,7 +1257,7 @@ class PatchTSTModel(BaseTimeSeriesModel):
 
             model = HFPatchTSTModel(cfg)
 
-            # READ BACK what HF actually stored (it may override our values)
+            # Read back what HF actually stored (it may override our values)
             self._actual_lags = list(model.config.lags_sequence) if hasattr(model.config, 'lags_sequence') else [1]
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
@@ -1351,7 +1349,7 @@ class TSMixerModel(BaseTimeSeriesModel):
 
     def _build_model(self) -> nn.Module:
         # Standardize context length calculation for fair comparison
-        # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+        # Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
         requested_lags = [1] if self.config.lag_years > 0 else [0]
         context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
@@ -1360,7 +1358,6 @@ class TSMixerModel(BaseTimeSeriesModel):
         if self.config.load_checkpoint:
             if TimeSeriesMixerModel is not None:
                 model = TimeSeriesMixerModel.from_pretrained(self.config.load_checkpoint)
-                self._uses_for_prediction = False
             else:
                 raise ImportError(
                     "Cannot load TSMixer checkpoint: TimeSeriesMixerModel (base model) not available. "
@@ -1382,13 +1379,6 @@ class TSMixerModel(BaseTimeSeriesModel):
                     # NOT using num_static_real_features - we'll concatenate later
                     hidden_size=64, num_layers=3, dropout=0.1, expansion_factor=2,
                 ))
-
-                # READ BACK what HF actually stored (it may override our values)
-                self._actual_lags = list(model.config.lags_sequence) if hasattr(model.config, 'lags_sequence') else [1]
-                self._actual_num_time_features = int(model.config.num_time_features)
-                self._actual_context_length = int(model.config.context_length)
-
-                self._uses_for_prediction = False
             else:
                 raise ImportError(
                     "TSMixer base model (TimeSeriesMixerModel) not available in this transformers version. "
@@ -1396,32 +1386,40 @@ class TSMixerModel(BaseTimeSeriesModel):
                     "Please upgrade transformers or use a different model."
                 )
 
-            # Probe the actual output shape to build regression head correctly
-            with torch.no_grad():
-                # Use actual_context_length to match model's expected input size
-                dummy = torch.zeros(1, self._actual_context_length, self.n_ts_features)
-                out = model(past_values=dummy)
-                h = self._extract_hidden_state(out)
-                pooled = self._pool_hidden_state(h)
-                pooled_dim = pooled.shape[-1]
+        # Read back what HF actually stored (it may override our values)
+        # This needs to happen for both checkpoint loading and new model creation
+        self._actual_lags = list(model.config.lags_sequence) if hasattr(model.config, 'lags_sequence') else [1]
+        self._actual_num_time_features = int(model.config.num_time_features)
+        self._actual_context_length = int(model.config.context_length)
+        self._uses_for_prediction = False
 
-            logging.info(f"[TSMixer BUILD] Probed actual output: h.shape={h.shape} → pooled.shape={pooled.shape} → pooled_dim={pooled_dim}")
+        # Probe the actual output shape to build regression head correctly
+        # This needs to happen for both checkpoint loading and new model creation
+        with torch.no_grad():
+            # Use actual_context_length to match model's expected input size
+            dummy = torch.zeros(1, self._actual_context_length, self.n_ts_features)
+            out = model(past_values=dummy)
+            h = self._extract_hidden_state(out)
+            pooled = self._pool_hidden_state(h)
+            pooled_dim = pooled.shape[-1]
 
-            # Build regression head with correct dimension
-            combined_dim = pooled_dim + self.n_static_features
-            self.regression_head = nn.Sequential(
-                nn.Linear(combined_dim, combined_dim // 2),
-                nn.LayerNorm(combined_dim // 2),
-                nn.ReLU(),
-                nn.Dropout(0.1),
-                nn.Linear(combined_dim // 2, 1)
-            )
+        logging.info(f"[TSMixer BUILD] Probed actual output: h.shape={h.shape} → pooled.shape={pooled.shape} → pooled_dim={pooled_dim}")
 
-            # Store for validation in forward()
-            self._pooled_dim = pooled_dim
+        # Build regression head with correct dimension
+        combined_dim = pooled_dim + self.n_static_features
+        self.regression_head = nn.Sequential(
+            nn.Linear(combined_dim, combined_dim // 2),
+            nn.LayerNorm(combined_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(combined_dim // 2, 1)
+        )
 
-            logging.info(f"[TSMixer BUILD] Created regression head: pooled_dim={pooled_dim}, "
-                        f"combined_dim={combined_dim}, hidden_dim={combined_dim // 2}")
+        # Store for validation in forward()
+        self._pooled_dim = pooled_dim
+
+        logging.info(f"[TSMixer BUILD] Created regression head: pooled_dim={pooled_dim}, "
+                    f"combined_dim={combined_dim}, hidden_dim={combined_dim // 2}")
 
         self._model_ready = True
         return model
@@ -1448,7 +1446,9 @@ class TSMixerModel(BaseTimeSeriesModel):
             T = self._actual_context_length
 
         #  Process temporal features through TSMixer
-        outputs = self.base_model(past_values=x_ts)
+        # Pass past_observed_mask to prevent padded zeros from being used in attention
+        past_observed_mask = observed_mask.unsqueeze(-1).expand(-1, -1, x_ts.shape[2]).float() if observed_mask is not None else None
+        outputs = self.base_model(past_values=x_ts, past_observed_mask=past_observed_mask)
 
         #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
@@ -1484,7 +1484,7 @@ class InformerModel(BaseTimeSeriesModel):
             self._actual_context_length = int(model.config.context_length)
         else:
             # Standardize context length calculation for fair comparison
-            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            # Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
             requested_lags = [1] if self.config.lag_years > 0 else [0]
             context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
@@ -1504,7 +1504,7 @@ class InformerModel(BaseTimeSeriesModel):
             # This should be correct, but verify after model creation
             model = HFInformerModel(cfg)  # Use base model for gradient flow
 
-            # READ BACK what HF actually stored (it may override our values)
+            # Read nacl what HF actually stored (it may override our values)
             self._actual_lags = list(model.config.lags_sequence)
             self._actual_num_time_features = int(model.config.num_time_features)
             self._actual_context_length = int(model.config.context_length)
@@ -1582,7 +1582,7 @@ class TSTModel(BaseTimeSeriesModel):
             self._actual_context_length = int(model.config.context_length)
         else:
             # Standardize context length calculation for fair comparison
-            # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+            # Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
             requested_lags = [1] if self.config.lag_years > 0 else [0]
             context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
@@ -1661,11 +1661,8 @@ class TSTModel(BaseTimeSeriesModel):
         return predictions
 
 
-# =========================================================
-# MODULE-LEVEL HELPER CLASSES FOR iTRANSFORMER AND TIMEXER
-# =========================================================
-# These classes are defined at module level to ensure proper pickling
-# for checkpoint saving/loading. Reference implementations from nixtla.
+# Helper classes for iTransformer and timexer – defined at module level to ensure proper pickling for checkpoint saving/loading. 
+# Reference implementations from nixtla.
 
 class FullAttention(nn.Module):
     """Scaled dot-product attention (nixtla implementation).
@@ -1873,16 +1870,12 @@ class Encoder(nn.Module):
         return x
 
 
-# =========================================================
-# iTRANSFORMER MODEL
-# =========================================================
-
+# iTransformers
 class iTransformerYieldModel(BaseTimeSeriesModel):
     """
     iTransformer: Inverted transformer for yield forecasting.
 
-    Key innovation from nixtla (Liu et al., 2023): treats each channel (weather variable)
-    as a token, not each timestep. This allows different variables to attend to each other,
+    Treats each channel (weather variable) as a token, not each timestep. This allows different variables to attend to each other,
     capturing cross-variable dependencies critical for crop yield prediction.
 
     Architectural adaptations for crop yield forecasting:
@@ -1905,7 +1898,7 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
         d_ff = 256
         dropout = 0.1
 
-        # CRITICAL: Calculate effective sequence length for alignment with linear models
+        # Calculate effective sequence length for alignment with linear models
         # iTransformer doesn't use lags in the traditional sense, but for consistency
         # we should truncate to the same context length as other models
         requested_lags = [1] if self.config.lag_years > 0 else [0]
@@ -1998,11 +1991,13 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
                 observed_mask = observed_mask[:, :self._actual_context_length]
             T = self._actual_context_length
 
-        #  RevIN normalization
+        # Apply instance-level (RevIN) normalization if enabled
+        # Input is already z-score normalized by _shared_step, so we only
+        # apply RevIN for additional instance-level normalization when enabled.
+        # We do NOT call _normalize_time_series here as it would double-normalize.
         if self.config.use_revin:
             x_ts = self._apply_revin_normalization(x_ts, observed_mask)
-        else:
-            x_ts = self._normalize_time_series(x_ts, observed_mask)
+        # else: x_ts is already normalized by _shared_step, use as-is
 
         #  Inverted embedding (nixtla's key innovation)
         # Permute from [B, T, C] to [B, C, T], then project T to hidden
@@ -2016,44 +2011,45 @@ class iTransformerYieldModel(BaseTimeSeriesModel):
         #  Project each channel to scalar representation
         channel_scalars = self.channel_projection(enc_out).squeeze(-1)  # [B, C]
 
-        #  Masked pooling across channels
-        # Handle missing channels (all NaN for a given variable across time)
-        channel_validity = (~torch.isnan(x_ts).any(dim=1)).float()  # [B, C]
-        pooled_channels = channel_scalars * channel_validity  # Zero out invalid channels
-        pooled_channels = pooled_channels.sum(dim=-1) / channel_validity.sum(dim=-1).clamp(min=1)  # [B]
+        #  Handle missing channels based on observed_mask
+        # After normalization, padded positions are zeros, so we check if a channel
+        # has any non-zero (valid) values across the sequence.
+        if observed_mask is not None:
+            # Channel is valid if it has any observed (non-padded) timesteps
+            # observed_mask: (B, T), we check per channel if any position is observed
+            # Since all channels share the same mask (temporal masking), we expand it
+            mask_expanded = observed_mask.unsqueeze(-1).float()  # (B, T, 1)
+            # A channel is valid if any timestep in that channel is observed
+            channel_validity = (mask_expanded.sum(dim=1) > 0).float()  # (B, 1)
+            channel_validity = channel_validity.expand(B, C).float()  # (B, C)
+        else:
+            # No mask: all channels are valid
+            channel_validity = torch.ones(B, C, device=x_ts.device)
 
-        # Alternative: use mean of valid channels as representation
-        channel_mask = channel_validity.unsqueeze(-1)  # [B, C, 1]
-        valid_channel_repr = channel_scalars * channel_validity  # [B, C]
-        n_valid = channel_validity.sum(dim=-1, keepdim=True).clamp(min=1)  # [B, 1]
-        pooled_repr = (valid_channel_repr.sum(dim=-1) / n_valid.squeeze(-1))  # [B]
+        #  Fill invalid channels with mean of valid ones
+        # This handles channels that were entirely padded (all zeros after normalization)
+        valid_channel_repr = channel_scalars * channel_validity  # Zero out invalid channels
+        n_valid = channel_validity.sum(dim=-1, keepdim=True).clamp(min=1)  # (B, 1)
+        mean_per_sample = (valid_channel_repr.sum(dim=-1, keepdim=True) / n_valid)  # (B, 1)
 
-        # Use all valid channels as features (not just mean)
-        # Fill invalid channels with mean of valid ones
-        filled_channels = channel_scalars.clone()
-        mean_per_sample = pooled_repr.unsqueeze(-1).expand(B, C)
         filled_channels = torch.where(
             channel_validity > 0.5,
-            filled_channels,
-            mean_per_sample
-        )  # [B, C]
+            channel_scalars,
+            mean_per_sample.expand(-1, C)  # (B, C)
+        )  # (B, C)
 
         #  Concatenate with static features and predict
         combined = torch.cat([filled_channels, x_static], dim=-1)  # [B, C + n_static]
         return self.regression_head(combined).squeeze(-1)  # [B]
 
 
-# =========================================================
-# TIMEXER MODEL
-# =========================================================
 
+# timexer MODEL
 class TimeXerYieldModel(BaseTimeSeriesModel):
     """
     TimeXer: Cross-attention transformer for yield forecasting with exogenous variables.
 
-    Key innovation from nixtla (Wang et al., 2024): combines endogenous patching
-    with cross-attention to exogenous channels. This allows the model to capture
-    both temporal patterns (via patching) and cross-variable interactions.
+    Combines endogenous patchinh with cross-attention to exogenous channels. This allows the model to capture both temporal patterns (via patching) and cross-variable interactions.
 
     Architectural adaptations for crop yield forecasting:
     - Endogenous: lag yields (broadcast over season) -> patched
@@ -2077,7 +2073,7 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         d_ff = 256
         dropout = 0.1
 
-        # CRITICAL: Calculate effective sequence length for alignment with linear models
+        # Calculate effective sequence length for alignment with linear models
         requested_lags = [1] if self.config.lag_years > 0 else [0]
         context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
@@ -2175,7 +2171,7 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         Forward pass for TimeXer.
 
         Data flow:
-          1. Apply RevIN normalization
+          1. Apply RevIN normalization (if enabled)
           2. Endogenous: lag yields (broadcast) -> patch + global token
           3. Exogenous: weather variables -> inverted embedding
           4. Encoder: self-attention on patches, cross-attention to exogenous
@@ -2191,11 +2187,12 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
                 observed_mask = observed_mask[:, :self._actual_context_length]
             T = self._actual_context_length
 
-        #  RevIN normalization
+        # Apply instance-level (RevIN) normalization if enabled
+        # Input is already z-score normalized by _shared_step, so we only apply RevIN for additional instance-level normalization when enabled.
+        # We do not call _normalize_time_series here as it would double-normalize.
         if self.config.use_revin:
             x_ts = self._apply_revin_normalization(x_ts, observed_mask)
-        else:
-            x_ts = self._normalize_time_series(x_ts, observed_mask)
+        # else: x_ts is already normalized by _shared_step, use as-is
 
         #  Build endogenous series from lag yields
         # This creates a constant series (broadcast scalar) for patching
@@ -2261,11 +2258,24 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         channel_repr = self.channel_projection(flat).squeeze(-1)  # [B, C]
         channel_repr = self.head_dropout(channel_repr)
 
-        #  Handle missing channels
-        channel_validity = (~torch.isnan(x_ts).any(dim=1)).float()  # [B, C]
+        #  Handle missing channels based on observed_mask
+        # After normalization, padded positions are zeros, so we check if a channel
+        # has any non-zero (valid) values across the sequence.
+        if observed_mask is not None:
+            # Channel is valid if it has any observed (non-padded) timesteps
+            # observed_mask: (B, T), we check per channel if any position is observed
+            # Since all channels share the same mask (temporal masking), we expand it
+            mask_expanded = observed_mask.unsqueeze(-1).float()  # (B, T, 1)
+            # A channel is valid if any timestep in that channel is observed
+            channel_validity = (mask_expanded.sum(dim=1) > 0).float()  # (B, 1)
+            channel_validity = channel_validity.expand(B, C).float()  # (B, C)
+        else:
+            # No mask: all channels are valid
+            channel_validity = torch.ones(B, C, device=x_ts.device)
+
         valid_channel_repr = channel_repr * channel_validity  # [B, C]
         n_valid = channel_validity.sum(dim=-1, keepdim=True).clamp(min=1)  # [B, 1]
-        pooled_repr = (valid_channel_repr.sum(dim=-1) / n_valid.squeeze(-1))  # [B]
+        pooled_repr = (valid_channel_repr.sum(dim=-1, keepdim=True) / n_valid)  # (B, 1, C)
 
         # Fill invalid channels with mean of valid ones
         filled_channels = channel_repr.clone()
@@ -2311,10 +2321,7 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         return endo
 
 
-# ============================================================================
-# TimesNet Implementation
-# ============================================================================
-
+# TimesNet Architecture
 class Inception_Block_V1(nn.Module):
     """
     Inception-style convolutional block for TimesNet.
@@ -2475,8 +2482,7 @@ class TimesNetModel(BaseTimeSeriesModel):
     """
     TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis.
 
-    Key innovation: Transforms 1D time series into 2D tensors using FFT-based
-    period detection, then applies 2D convolutions to capture complex temporal patterns.
+    Transforms 1D time series into 2D tensors using FFT-based period detection, then applies 2D convolutions to capture complex temporal patterns.
 
     Adapted from: https://github.com/thuml/Time-Series-Library
 
@@ -2490,7 +2496,7 @@ class TimesNetModel(BaseTimeSeriesModel):
     def _build_model(self) -> nn.Module:
         """Build TimesNet model for yield prediction."""
         # Standardize context length calculation for fair comparison
-        # CRITICAL: Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
+        # Use [1] if lag_years > 0, else [0] to ensure alignment with linear models
         requested_lags = [1] if self.config.lag_years > 0 else [0]
         context_length = self._get_standardized_context_length(self.config.seq_len, requested_lags)
 
@@ -2546,8 +2552,12 @@ class TimesNetModel(BaseTimeSeriesModel):
 
         self._model_ready = True
 
-        # Return a dummy module (we use the blocks directly)
-        return nn.Sequential()
+        # Return nn.Identity() for base_model to avoid double-registration
+        # The actual model components (enc_embedding, times_net_blocks) are registered
+        # as direct attributes and used in forward(). Wrapping them in a Sequential
+        # would register parameters twice. nn.Identity() provides a valid module
+        # without duplicating parameters.
+        return nn.Identity()
 
     def forward(self, x_ts: torch.Tensor, x_static: torch.Tensor,
                 observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
