@@ -158,13 +158,16 @@ from cybench.config import (LOCATION_PROPERTIES, SOIL_PROPERTIES,
     CROP_CALENDAR_DATES
 )
 
-# Loading custom functions and classes
-sys.path.append('../../process/')
+# Loading custom functions and classes (paths relative to this file, not cwd)
+_YIELD_HUB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+for _subdir in ("process", "architectures"):
+    _p = os.path.join(_YIELD_HUB_ROOT, _subdir)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from helpers import generate_checkpoint_name, save_test_results_to_csv
 from validateModel import print_metrics_table, run_walk_forward_validation
 from loadData import calculate_fixed_split, DailyCYBenchSeqDataModule
-
-sys.path.append('../../architectures/')
 from modelconfig import TSTModelConfig
 from tstLayer import create_model
 
@@ -232,6 +235,9 @@ if __name__ == "__main__":
                              'For 3 concurrent scripts, this balances CPU usage. Set manually to override.')
     parser.add_argument('--test_years', type=int, default=3,
                         help='Number of years for final test set (default: 3)')
+    parser.add_argument('--wf_fold_idx', type=int, default=None,
+                        help='Run only this walk-forward fold (0..test_years-1). '
+                             'Default: run all folds in one job. Use with Slurm array per fold for large countries.')
     # Feature configuration flags for ablation studies
     parser.add_argument('--use_cwb_feature', action='store_true',
                         help='Include crop water balance (cwb) as a feature. '
@@ -374,7 +380,8 @@ if __name__ == "__main__":
         timestamp=timestamp,
         save_checkpoint_dir=args.save_checkpoint_dir,
         save_top_k=1,
-        save_last=False
+        save_last=False,
+        fold_idx_only=args.wf_fold_idx,
     )
 
     print(f"\n{'=' * 70}")
