@@ -503,6 +503,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         # Accumulate per-year predictions for CSV results
         self._accumulate_per_year_predictions(preds_clipped, targets, years)
 
+        return loss
+
     def _accumulate_per_year_predictions(self, preds: torch.Tensor, targets: torch.Tensor, years: torch.Tensor):
         """Accumulate predictions and targets per year for later metrics computation."""
         if not hasattr(self, '_per_year_preds') or not self._per_year_preds:
@@ -1212,12 +1214,17 @@ class XLinearYieldModel(BaseTimeSeriesModel):
         observed_mask: Optional[torch.Tensor],
     ) -> torch.Tensor:
         """
-        Construct the endogenous series from lag yield features.
+        Construct the endogenous series for XLinear.
 
-        Applies RevIN normalization if enabled.
+        Uses lag yield as the endogenous series (the target variable from previous years).
+        While this creates a constant series over time, it is semantically closer to the
+        original papers' intent where endogenous = the target variable.
+
+        Falls back to mean of exogenous channels if lag yields are not available.
         """
         B, T, C = x_ts.shape
 
+        # Use lag yield as endogenous (target variable from previous years)
         if self.config.lag_years > 0:
             static_names = self._get_static_feature_names()
             lag_indices = [
@@ -1226,18 +1233,14 @@ class XLinearYieldModel(BaseTimeSeriesModel):
             ]
 
             if lag_indices:
-                # Use only the most recent lag (lag_indices[0]) as the endogenous series.
-                # Multiple lag years are primarily used as static features; the endogenous
-                # series should represent the most recent historical yield value.
-                lag_val = x_static[:, lag_indices[0]:lag_indices[0]+1]
-                endo = lag_val.unsqueeze(1).expand(B, T, 1)
+                # Use only the most recent lag (lag_indices[0]) as the endogenous series
+                lag_val = x_static[:, lag_indices[0]:lag_indices[0]+1]  # [B, 1]
+                endo = lag_val.unsqueeze(1).expand(B, T, 1)  # [B, T, 1] - broadcast over time
 
                 if observed_mask is not None:
                     endo = endo * observed_mask.unsqueeze(-1).float()
 
-                # Don't apply RevIN on lag yield endogenous series. Lag yields are already in z-score space (normalized static features) and are constant 
-                # across time, which makes RevIN normalization problematic (std ≈ 0 for constant series).
-                # The fallback path (mean of exogenous channels) can use RevIN since it has temporal variation.
+                # Don't apply RevIN on constant lag yield series (std ≈ 0)
                 return endo
 
         # Fallback: mean of all exogenous channels
