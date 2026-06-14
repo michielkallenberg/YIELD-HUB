@@ -205,7 +205,7 @@ class DailyCYBenchSeqDataModule(pl.LightningDataModule):
 
         # Always recompute normalization for the current split
         # Prevents stale params from a previous setup() call leaking into a new split
-        # Except if we're setting up for testing only (no train years), in which case
+        # EXCEPT if we're setting up for testing only (no train years), in which case
         # we reuse existing normalization stats
         if train_years is not None and len(train_years) > 0:
             self.feature_norm_params = None

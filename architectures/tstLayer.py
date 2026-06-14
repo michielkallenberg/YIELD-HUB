@@ -142,6 +142,24 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
 
         print(f"[Model] TS features={self.n_ts_features}, Static features={self.n_static_features}")
 
+        # Initialize positional encoding for temporal ordering (optional, enabled by default)
+        # The max_len is based on aggregation to ensure proper coverage of the season
+        self.d_model = 64  # Standard hidden size across all transformer models
+        max_len_map = {"daily": 365, "weekly": 52, "dekad": 36}
+        pe_max_len = max_len_map.get(config.aggregation, 365)
+        self.use_positional_encoding = config.use_positional_encoding
+
+        if self.use_positional_encoding:
+            self.positional_encoding = TemporalPositionalEncoding(
+                d_model=self.d_model,
+                max_len=pe_max_len,
+                dropout=0.1
+            )
+            logging.info(f"[Positional Encoding] Enabled with d_model={self.d_model}, max_len={pe_max_len}")
+        else:
+            self.positional_encoding = None
+            logging.info("[Positional Encoding] Disabled")
+
         # Flag for tracking model build completion (used by _verify_mask_is_used)
         self._model_ready = False
 
@@ -290,6 +308,37 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
                 f"Unexpected hidden state shape: {h.shape} "
                 f"(expected 2D, 3D, or 4D tensor, got {h.dim()}D)"
             )
+
+    def _apply_positional_encoding(self, h: torch.Tensor,
+                                    observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Apply positional encoding to hidden state if enabled.
+
+        This method handles different tensor shapes:
+          - (B, seq_len, d_model) → apply PE to seq_len dimension
+          - (B, d_model) → no PE needed (already pooled)
+          - Other shapes → return as-is (PatchTST special handling)
+
+        Args:
+            h: Hidden state tensor
+            observed_mask: Optional boolean mask for valid timesteps
+
+        Returns:
+            Hidden state with positional encoding added (if applicable)
+        """
+        if not self.use_positional_encoding or self.positional_encoding is None:
+            return h
+
+        if h.dim() == 3:
+            # Standard transformer output: (B, seq_len, d_model)
+            return self.positional_encoding(h, observed_mask)
+        elif h.dim() == 2:
+            # Already pooled: (B, d_model) - no PE needed
+            return h
+        else:
+            # 4D tensors (PatchTST multivariate) - skip PE for now
+            # Could be extended to add PE per-patch if needed
+            return h
 
     def _normalize_time_series(self, x_ts: torch.Tensor,
                                 observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -632,7 +681,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         pred = self.forward(x_ts_n, x_static_n, observed_mask=validity_mask)
 
         # Add trend back
-        final_pred_z = pred + batch_trends.squeeze(-1) if batch_trends is not None else pred
+        final_pred_z = pred + batch_trends.squeeze(-1).detach() if batch_trends is not None else pred
 
         # Compute loss in z-score space (for consistency with training)
         loss = self._compute_weighted_loss(final_pred_z, y_z)
@@ -730,8 +779,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
 
             # SMAPE - manual computation for consistency
             smape_val = torch.mean(2.0 * torch.abs(preds - targets) /
-                                  (torch.abs(preds) + torch.abs(targets) + 1e-6))
-            nrmse_val = rmse_val / (torch.mean(targets) + 1e-6)
+                                  (torch.abs(preds) + torch.abs(targets) + 1e-8))
+            nrmse_val = rmse_val / (torch.mean(targets).clamp(min=1e-8))
 
             # R² score requires at least 2 samples
             if len(preds) >= 2:
@@ -768,8 +817,8 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
             rmse_val = torch.sqrt(mse_val)
 
             smape_val = torch.mean(2.0 * torch.abs(all_preds_t - all_targets_t) /
-                                  (torch.abs(all_preds_t) + torch.abs(all_targets_t) + 1e-6))
-            nrmse_val = rmse_val / (torch.mean(all_targets_t) + 1e-6)
+                                  (torch.abs(all_preds_t) + torch.abs(all_targets_t) + 1e-8))
+            nrmse_val = rmse_val / (torch.mean(all_targets_t).clamp(min=1e-8))
 
             # R² score requires at least 2 samples
             if len(all_preds_t) >= 2:
@@ -854,7 +903,7 @@ class BaseTimeSeriesModel(ABC, pl.LightningModule):
         pred = self.forward(x_ts_n, x_static_n, observed_mask=validity_mask)
 
         # Add trend back
-        final_pred_z = pred + batch_trends.squeeze(-1) if batch_trends is not None else pred
+        final_pred_z = pred + batch_trends.squeeze(-1).detach() if batch_trends is not None else pred
 
         # Denormalize to original scale
         device = final_pred_z.device
@@ -1199,6 +1248,9 @@ class AutoformerYieldModel(BaseTimeSeriesModel):
         #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
+        #  Apply positional encoding if enabled (preserves temporal ordering)
+        h = self._apply_positional_encoding(h, observed_mask)
+
         #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, d_model)
 
@@ -1323,6 +1375,9 @@ class PatchTSTModel(BaseTimeSeriesModel):
 
         #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
+
+        #  Apply positional encoding if enabled (preserves temporal ordering)
+        h = self._apply_positional_encoding(h, observed_mask)
 
         #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, pooled_dim)
@@ -1453,6 +1508,9 @@ class TSMixerModel(BaseTimeSeriesModel):
         #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
+        #  Apply positional encoding if enabled (preserves temporal ordering)
+        h = self._apply_positional_encoding(h, observed_mask)
+
         #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, pooled_dim)
 
@@ -1552,6 +1610,9 @@ class InformerModel(BaseTimeSeriesModel):
         #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
 
+        #  Apply positional encoding if enabled (preserves temporal ordering)
+        h = self._apply_positional_encoding(h, observed_mask)
+
         #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, d_model)
 
@@ -1650,6 +1711,9 @@ class TSTModel(BaseTimeSeriesModel):
 
         #  Extract hidden state using shared helper
         h = self._extract_hidden_state(outputs)
+
+        #  Apply positional encoding if enabled (preserves temporal ordering)
+        h = self._apply_positional_encoding(h, observed_mask)
 
         #  Pool hidden state using shared helper
         pooled = self._pool_hidden_state(h)  # (B, d_model)
@@ -1801,6 +1865,88 @@ class PositionalEmbedding(nn.Module):
 
     def forward(self, x):
         return self.pe[:, :x.size(1)]
+
+
+class TemporalPositionalEncoding(nn.Module):
+    """
+    Sinusoidal positional encoding for time series transformers.
+
+    Designed for agricultural time series where temporal ordering matters
+    for understanding crop growth patterns and weather dependencies.
+
+    Uses standard sinusoidal encoding with configurable max length based
+    on aggregation frequency (daily: 365, weekly: 52, dekad: 36).
+
+    Args:
+        d_model: Dimension of the model (hidden size)
+        max_len: Maximum sequence length (default: 365 for daily data)
+        dropout: Dropout probability (default: 0.1)
+
+    The encoding uses the standard transformer formula:
+        PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
+        PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+
+    This creates unique positional embeddings for each timestep while
+    allowing the model to learn relative positions through attention.
+    """
+
+    def __init__(self, d_model: int, max_len: int = 365, dropout: float = 0.1):
+        super().__init__()
+
+        # Create positional encoding matrix
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+
+        # Compute the division term for different frequencies
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+
+        # Apply sin to even indices, cos to odd indices
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+
+        # Shape: [1, max_len, d_model] for broadcasting
+        pe = pe.unsqueeze(0)
+
+        # Register as buffer (not a learnable parameter)
+        self.register_buffer('pe', pe)
+
+        self.dropout = nn.Dropout(p=dropout)
+        self.d_model = d_model
+        self.max_len = max_len
+
+    def forward(self, x: torch.Tensor, observed_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Add positional encoding to input tensor.
+
+        Args:
+            x: Input tensor of shape [batch, seq_len, d_model]
+            observed_mask: Optional boolean mask [batch, mask_len] indicating valid timesteps.
+                           Will be truncated to match seq_len if mask_len > seq_len.
+
+        Returns:
+            Tensor with positional encoding added, same shape as input
+        """
+        B, T, D = x.shape
+
+        # Get positional encoding for this sequence length
+        # pe is [1, max_len, d_model], take first T positions
+        pos_encoding = self.pe[:, :T, :].expand(B, -1, -1)  # [B, T, D]
+
+        # If mask is provided, zero out positional encoding for padded positions
+        # This prevents positional information from leaking into attention for invalid timesteps
+        if observed_mask is not None:
+            # Truncate mask to match actual sequence length T
+            # This handles cases where HuggingFace models internally downsample the sequence
+            # but the mask still has the original (longer) length
+            if observed_mask.shape[1] > T:
+                observed_mask = observed_mask[:, :T]
+            mask_expanded = observed_mask.unsqueeze(-1).float()  # [B, T, 1]
+            pos_encoding = pos_encoding * mask_expanded
+
+        # Add positional encoding to input and apply dropout
+        return self.dropout(x + pos_encoding)
 
 
 class EncoderLayer(nn.Module):
@@ -2275,11 +2421,11 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
 
         valid_channel_repr = channel_repr * channel_validity  # [B, C]
         n_valid = channel_validity.sum(dim=-1, keepdim=True).clamp(min=1)  # [B, 1]
-        pooled_repr = (valid_channel_repr.sum(dim=-1, keepdim=True) / n_valid)  # (B, 1, C)
+        pooled_repr = (valid_channel_repr.sum(dim=-1, keepdim=True) / n_valid)  # (B, 1)
 
         # Fill invalid channels with mean of valid ones
         filled_channels = channel_repr.clone()
-        mean_per_sample = pooled_repr.unsqueeze(-1).expand(B, C)
+        mean_per_sample = pooled_repr.expand(B, C)  # [B, C]
         filled_channels = torch.where(
             channel_validity > 0.5,
             filled_channels,
@@ -2296,9 +2442,18 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
         x_ts: torch.Tensor,
         observed_mask: Optional[torch.Tensor],
     ) -> torch.Tensor:
-        """Build endogenous series from lag yields (constant over time)."""
+        """
+        Build endogenous series for TimeXer.
+
+        Uses lag yield as the endogenous series (the target variable from previous years).
+        While this creates a constant series over time, it is semantically closer to the
+        original papers' intent where endogenous = the target variable.
+
+        Falls back to mean of exogenous channels if lag yields are not available.
+        """
         B, T, C = x_ts.shape
 
+        # Use lag yield as endogenous (target variable from previous years)
         if self.config.lag_years > 0:
             static_names = self._get_static_feature_names()
             lag_indices = [
@@ -2307,9 +2462,9 @@ class TimeXerYieldModel(BaseTimeSeriesModel):
             ]
 
             if lag_indices:
-                # Most recent lag: broadcast scalar over time
+                # Use the most recent lag as endogenous
                 lag_val = x_static[:, lag_indices[0]:lag_indices[0] + 1]  # [B, 1]
-                endo = lag_val.unsqueeze(1).expand(B, T, 1)  # [B, T, 1]
+                endo = lag_val.unsqueeze(1).expand(B, T, 1)  # [B, T, 1] - broadcast over time
 
                 if observed_mask is not None:
                     endo = endo * observed_mask.unsqueeze(-1).float()
